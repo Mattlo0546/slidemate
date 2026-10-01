@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         penv["SLIDEMATE_PORT"] = port
         penv["SLIDEMATE_HELPER"] = res.appendingPathComponent("Helpers/SlideMateAirDrop.app").path
         penv["PYTHONUNBUFFERED"] = "1"
+        penv["SLIDEMATE_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)  // server exits if the app dies
         p.environment = penv
         p.standardOutput = log
         p.standardError = log

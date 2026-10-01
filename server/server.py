@@ -443,8 +443,24 @@ def housekeeping():
         time.sleep(30)
 
 
+def watch_parent():
+    """When started by SlideMate.app, quit if the app goes away (force-quit or crash), so no server is left behind."""
+    pid = int(os.environ.get("SLIDEMATE_PARENT_PID") or 0)
+    if not pid:
+        return
+    while True:
+        time.sleep(3)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            for s in list(SESSIONS.values()):
+                s.close()
+            os._exit(0)
+
+
 def main():
     threading.Thread(target=housekeeping, daemon=True).start()
+    threading.Thread(target=watch_parent, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
     print(f"SlideMate running on http://127.0.0.1:{config.PORT}  (data: {config.DATA})", flush=True)
