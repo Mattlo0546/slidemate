@@ -141,7 +141,13 @@
         <textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea>
         <button class="send" type="submit" title="Send (Enter)"><svg><use href="#i-up"/></svg></button>
       </form>
-      <div id="chatCtx"></div>
+      <div id="composerBar">
+        <div id="chatCtx"></div>
+        <button id="ctxRing" class="ghost" title="Context and plan usage">
+          <svg viewBox="0 0 20 20" class="ringsvg"><circle cx="10" cy="10" r="7.5" class="bg"/><circle cx="10" cy="10" r="7.5" class="fg" id="ringFg"/></svg>
+        </button>
+        <button id="modelBtn" class="ghost" title="Model and effort"><span id="modelLabel">Model</span><svg><use href="#i-down"/></svg></button>
+      </div>
     </div>
   </aside>
 </main>
@@ -155,6 +161,8 @@
   <button data-act="copy"><svg><use href="#i-copy"/></svg>Copy slide image</button>
 </div>
 <div id="libMenu" class="menu" hidden></div>
+<div id="modelMenu" class="menu" hidden></div>
+<div id="usagePop" class="menu" hidden></div>
 <div id="notesMenu" class="menu" hidden>
   <button data-nm="import"><svg><use href="#i-notes"/></svg>Import a transcript…</button>
   <button data-nm="regen"><svg><use href="#i-sparkle"/></svg>Rewrite notes</button>

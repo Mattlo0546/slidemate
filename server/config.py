@@ -34,7 +34,9 @@ DEFAULTS = {
     "provider": "claude",           # "claude" (Claude Code) or "codex" (Codex CLI / ChatGPT sign-in)
     "claude_model": "sonnet",
     "claude_notes_model": "opus",
+    "claude_effort": "",            # "" = default, or low / medium / high / xhigh / max
     "codex_model": "",              # blank = Codex default
+    "codex_effort": "",             # "" = model default
     "ipad_name": "",
     "airdrop": True,
     "copy_to_clipboard": True,

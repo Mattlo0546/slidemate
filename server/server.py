@@ -26,12 +26,13 @@ import providers
 
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
+USAGE = {}  # deck path → last context/plan usage of its tutor conversation
 
 
 def get_session(path):
     prov = providers.current()
     model = providers.model_for("chat")
-    key = (path, prov.name, model, mcp.fingerprint())
+    key = (path, prov.name, model, providers.effort_for(), mcp.fingerprint())
     with SESSIONS_LOCK:
         for k in [k for k in SESSIONS if k[0] == path and k != key]:
             SESSIONS.pop(k).close()  # provider/model changed: start over
@@ -184,6 +185,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({n: {"source": s["source"], "command": s.get("command") or s.get("url"),
                                        "env_keys": sorted((s.get("env") or {}).keys()), "added": n in have}
                                    for n, s in mcp.discover().items()})
+            if u.path == "/api/models":
+                return self._json(providers.catalogue())
+            if u.path == "/api/usage":
+                u_ = USAGE.get(arg("path")) or {}
+                return self._json({**u_, "limits": providers.LIMITS.get(config.load()["provider"], u_.get("limits", []))})
             if u.path == "/api/status":
                 return self._json(status())
             if u.path == "/api/trust":
@@ -363,8 +369,10 @@ class Handler(BaseHTTPRequestHandler):
         user_msg = {"role": "user", "text": body.get("display") or question, "slide": page, "ts": time.time(), "snip": bool(body.get("snip"))}
         answer, gone = [], False
         for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path)):
-            if isinstance(chunk, tuple):  # ("status", "Using blackboard › bb_upcoming…"): shown live, not saved
-                msg = f"event: status\ndata: {json.dumps(chunk[1])}\n\n"
+            if isinstance(chunk, tuple):  # ("status", "Using blackboard › …") / ("usage", {...}): live only, not saved
+                if chunk[0] == "usage":
+                    USAGE[path] = chunk[1]
+                msg = f"event: {chunk[0]}\ndata: {json.dumps(chunk[1])}\n\n"
             else:
                 answer.append(chunk)
                 msg = f"data: {json.dumps(chunk)}\n\n"

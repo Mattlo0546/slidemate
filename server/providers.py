@@ -4,10 +4,12 @@
 - "codex":  Codex CLI (`codex`) using "Sign in with ChatGPT". Gets the deck's text plus an image of your slide.
 """
 import base64
+import glob
 import json
 import os
 import re
 import subprocess
+import time
 import threading
 import uuid
 from pathlib import Path
@@ -36,6 +38,52 @@ def _tool_label(name):
     """'mcp__blackboard__bb_upcoming' → 'blackboard › bb_upcoming'."""
     parts = name.split("__")
     return " › ".join(parts[1:]) if parts[0] == "mcp" and len(parts) > 2 else name
+
+
+# ------------------------------------------------------------------ models, effort, usage
+
+CLAUDE_MODELS = [
+    {"id": "opus", "label": "Opus 5.5", "desc": "Most capable for deep explanations"},
+    {"id": "sonnet", "label": "Sonnet 5.5", "desc": "Fast and smart, the everyday choice"},
+    {"id": "fable", "label": "Fable 5.1", "desc": "Most powerful, slower"},
+    {"id": "haiku", "label": "Haiku 4.5", "desc": "Fastest, lightest"},
+]
+CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+LIMITS = {}  # provider → latest plan-usage windows reported by the CLI
+
+
+def window_label(minutes=None, key=""):
+    if key == "five_hour" or minutes == 300:
+        return "5-hour limit"
+    if key == "seven_day" or minutes == 10080:
+        return "Weekly limit"
+    if minutes:
+        return f"{minutes // 60}-hour limit" if minutes < 1440 else f"{minutes // 1440}-day limit"
+    return key.replace("_", " ").capitalize() or "Limit"
+
+
+def codex_models():
+    try:
+        data = json.loads((config.HOME / ".codex" / "models_cache.json").read_text())
+    except Exception:
+        return []
+    out = []
+    for m in data if isinstance(data, list) else data.get("models", []):
+        if m.get("visibility", "list") != "list":
+            continue
+        out.append({"id": m["slug"], "label": m.get("display_name") or m["slug"], "desc": (m.get("description") or "")[:80],
+                    "context_window": m.get("context_window"),
+                    "efforts": [e["effort"] for e in m.get("supported_reasoning_levels", []) if e.get("effort") != "ultra"],
+                    "default_effort": m.get("default_reasoning_level")})
+    return out
+
+
+def catalogue():
+    cfg = config.load()
+    return {"provider": cfg["provider"],
+            "claude": {"models": CLAUDE_MODELS, "efforts": CLAUDE_EFFORTS, "model": cfg["claude_model"], "effort": cfg["claude_effort"]},
+            "codex": {"models": codex_models(), "model": cfg["codex_model"], "effort": cfg["codex_effort"]},
+            "limits": LIMITS.get(cfg["provider"], [])}
 
 
 # ------------------------------------------------------------------ PDF helpers
@@ -108,7 +156,7 @@ class Claude:
                 "--strict-mcp-config", "--model", model]
 
     def session(self, pdf, model):
-        return ClaudeSession(self, pdf, model)
+        return ClaudeSession(self, pdf, model, config.load()["claude_effort"])
 
     def oneshot(self, prompt, model=None, timeout=300):
         cmd = self._base(model or config.load()["claude_model"]) + ["--output-format", "json"]
@@ -151,8 +199,8 @@ def _claude_deck_blocks(pdf):
 class ClaudeSession:
     """One long-lived `claude -p` process per deck: the deck is sent once, follow-ups keep full context."""
 
-    def __init__(self, provider, pdf, model):
-        self.p, self.pdf, self.model = provider, pdf, model
+    def __init__(self, provider, pdf, model, effort=""):
+        self.p, self.pdf, self.model, self.effort = provider, pdf, model, effort
         self.lock = threading.Lock()
         self.proc = None
         self.primed = False
@@ -171,6 +219,8 @@ class ClaudeSession:
                 cmd = self.p._base(self.model) + ["--input-format", "stream-json", "--output-format", "stream-json",
                                                   "--verbose", "--include-partial-messages", "--system-prompt", TUTOR_PROMPT]
                 cmd += mcp.claude_args()
+                if self.effort in CLAUDE_EFFORTS:
+                    cmd += ["--effort", self.effort]
                 self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                              cwd=config.WORK, text=True, bufsize=1, env=config.ENV)
                 self.primed = False
@@ -207,11 +257,21 @@ class ClaudeSession:
                         yield ("status", f"Using {_tool_label(e['content_block'].get('name', 'a tool'))}…")
                         if streamed:
                             yield "\n\n"
+                elif t == "rate_limit_event":
+                    info = ev.get("rate_limit_info") or {}
+                    wins = info.get("unifiedWindows") or {}
+                    LIMITS["claude"] = [{"label": window_label(key=k), "used": w.get("utilization"), "resets_at": w.get("resetsAt")}
+                                        for k, w in wins.items()] or LIMITS.get("claude", [])
                 elif t == "result":
                     if ev.get("is_error"):
                         yield f"\n\n**Error:** {ev.get('result') or ev.get('subtype')}"
                     elif not streamed and ev.get("result"):
                         yield ev["result"]
+                    u = ev.get("usage") or {}
+                    mu = next(iter((ev.get("modelUsage") or {}).items()), (None, {}))
+                    used = sum(u.get(k, 0) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"))
+                    yield ("usage", {"context_used": used, "context_window": mu[1].get("contextWindow"), "model": mu[0],
+                                     "limits": LIMITS.get("claude", []), "at": time.time()})
                     return
             err = self.proc.stderr.read()[-800:] if self.proc else ""
             self.close()
@@ -249,7 +309,7 @@ class Codex:
                 st["detail"] = str(e)[:200]
         return st
 
-    def _cmd(self, resume=None, model=None, images=(), ephemeral=False, tools=False):
+    def _cmd(self, resume=None, model=None, images=(), ephemeral=False, tools=False, effort=""):
         model = model if model is not None else config.load()["codex_model"]
         if resume:
             cmd = [self.bin(), "exec", "resume", resume]
@@ -260,6 +320,8 @@ class Codex:
             cmd.append("--ephemeral")
         if tools:
             cmd += mcp.codex_args()
+        if effort:
+            cmd += ["-c", f'model_reasoning_effort="{effort}"']
         if model:
             cmd += ["-m", model]
         for img in images:
@@ -300,7 +362,7 @@ class Codex:
             timer.cancel()
 
     def session(self, pdf, model):
-        return CodexSession(self, pdf, model)
+        return CodexSession(self, pdf, model, config.load()["codex_effort"])
 
     def oneshot(self, prompt, model=None, timeout=600):
         texts, errors = [], []
@@ -321,8 +383,8 @@ class Codex:
 class CodexSession:
     """Codex keeps the conversation as a thread; the deck text goes in the first turn, follow-ups resume it."""
 
-    def __init__(self, provider, pdf, model):
-        self.p, self.pdf, self.model = provider, pdf, model
+    def __init__(self, provider, pdf, model, effort=""):
+        self.p, self.pdf, self.model, self.effort = provider, pdf, model, effort
         self.lock = threading.Lock()
         self.thread = None
         self.dir = config.WORK / f"codex-{uuid.uuid4().hex[:8]}"
@@ -349,7 +411,8 @@ class CodexSession:
             parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
             first = True
             got = False
-            for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True),
+            for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True,
+                                                     effort=self.effort),
                                          "\n\n".join(parts), 600):
                 if kind == "thread" and val:
                     self.thread = val
@@ -361,6 +424,36 @@ class CodexSession:
                     first = False
                 elif kind == "error" and not got:
                     yield f"\n\n**Codex error:** {val}"
+            usage = self.usage()
+            if usage:
+                yield ("usage", usage)
+
+    def usage(self):
+        """Context + plan usage, read from the token_count events Codex writes to its session log."""
+        if not self.thread:
+            return None
+        files = glob.glob(str(config.HOME / ".codex" / "sessions" / "**" / f"rollout-*{self.thread}.jsonl"), recursive=True)
+        if not files:
+            return None
+        last = None
+        try:
+            with open(max(files, key=os.path.getmtime)) as f:
+                for line in f:
+                    if '"token_count"' in line:
+                        last = line
+            payload = json.loads(last)
+            info = payload.get("payload", payload).get("info") or {}
+            rl = payload.get("payload", payload).get("rate_limits") or {}
+        except Exception:
+            return None
+        lu = info.get("last_token_usage") or {}
+        limits = [{"label": window_label(w.get("window_minutes")), "used": (w.get("used_percent") or 0) / 100,
+                   "resets_at": w.get("resets_at")} for w in (rl.get("primary"), rl.get("secondary")) if w]
+        if limits:
+            LIMITS["codex"] = limits
+        return {"context_used": (lu.get("input_tokens") or 0) + (lu.get("output_tokens") or 0),
+                "context_window": info.get("model_context_window"), "model": self.model or "default",
+                "limits": LIMITS.get("codex", []), "at": time.time()}
 
 
 PROVIDERS = {"claude": Claude(), "codex": Codex()}
@@ -368,6 +461,11 @@ PROVIDERS = {"claude": Claude(), "codex": Codex()}
 
 def current():
     return PROVIDERS.get(config.load()["provider"], PROVIDERS["claude"])
+
+
+def effort_for():
+    cfg = config.load()
+    return cfg["codex_effort"] if cfg["provider"] == "codex" else cfg["claude_effort"]
 
 
 def model_for(kind="chat"):

@@ -249,6 +249,7 @@ async function openPdf(path, page) {
     history.replaceState(null, '', '?file=' + encodeURIComponent(path));
     await loadChat(path);
     loadLectures(path);
+    loadUsage(path);
     await buildPages();
     goTo(page || store.get('page:' + path, 1), false);
     renderLibrary();
@@ -604,6 +605,7 @@ async function askInner(question) {
         const block = buf.slice(0, i); buf = buf.slice(i + 2);
         const line = block.split('\n').find((l) => l.startsWith('data: '));
         if (!line || block.startsWith('event: done')) continue;
+        if (block.startsWith('event: usage')) { setUsage(JSON.parse(line.slice(6))); continue; }
         if (block.startsWith('event: status')) {  // e.g. "Using blackboard › bb_upcoming…" (live only)
           bot.status = JSON.parse(line.slice(6));
           if (!raf) raf = requestAnimationFrame(paint);
@@ -820,6 +822,99 @@ function renderSyncMode() {
 $('#setSyncMode').addEventListener('change', renderSyncMode);
 $('#syncServer').addEventListener('change', renderSyncMode);
 
+// ---------- model / effort picker + usage ring (bottom right of the composer) ----------
+let catalog = null, usage = {};
+const EFFORT_LABEL = { '': 'Auto', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', minimal: 'Minimal' };
+const fmtTok = (n) => n == null ? '–' : n >= 1e6 ? `${+(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M` : n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n);
+async function loadModels() {
+  try { catalog = await (await api('/api/models')).json(); } catch { return; }
+  renderModelBtn();
+}
+function provCat() { return catalog ? catalog[catalog.provider] : null; }
+function renderModelBtn() {
+  const c = provCat();
+  if (!c) return;
+  const m = c.models.find((x) => x.id === c.model);
+  const name = m ? m.label : (catalog.provider === 'codex' ? 'Default model' : c.model);
+  $('#modelLabel').textContent = `${name}${c.effort ? ' · ' + (EFFORT_LABEL[c.effort] || c.effort) : ''}`;
+}
+function effortsFor(c) {
+  if (catalog.provider === 'claude') return c.efforts;
+  const m = c.models.find((x) => x.id === c.model);
+  return m?.efforts || ['low', 'medium', 'high', 'xhigh'];
+}
+function openModelMenu() {
+  const c = provCat();
+  if (!c) return;
+  const menu = $('#modelMenu');
+  const models = catalog.provider === 'codex' ? [{ id: '', label: 'Default', desc: 'Whatever Codex is set to use' }, ...c.models] : c.models;
+  menu.innerHTML = `<div class="label">${catalog.provider === 'codex' ? 'ChatGPT model' : 'Claude model'}</div>`
+    + models.map((m) => `<button class="mrow" data-model="${esc(m.id)}"><b>${esc(m.label)}${m.id === c.model ? '<span class="chk">✓</span>' : ''}</b>${m.desc ? `<span>${esc(m.desc)}</span>` : ''}</button>`).join('')
+    + `<hr><div class="label">Effort</div><div class="efforts">${['', ...effortsFor(c)].map((e) => `<button data-effort="${e}" class="${e === (c.effort || '') ? 'on' : ''}">${EFFORT_LABEL[e] || e}</button>`).join('')}</div>`;
+  menu.hidden = false;
+  placeAbove(menu, $('#modelBtn'));
+}
+function placeAbove(menu, anchor) {
+  const place = () => {
+    const r = anchor.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8)) + 'px';
+    menu.style.top = Math.max(8, r.top - menu.offsetHeight - 6) + 'px';
+  };
+  place();
+  requestAnimationFrame(place);  // fonts/layout can settle a frame later on first open
+}
+$('#modelBtn').onclick = (e) => { e.stopPropagation(); $('#modelMenu').hidden ? openModelMenu() : ($('#modelMenu').hidden = true); };
+$('#modelMenu').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const prov = catalog.provider;
+  const change = b.dataset.model !== undefined ? { [`${prov}_model`]: b.dataset.model } : { [`${prov}_effort`]: b.dataset.effort };
+  cfg = await post('/api/config', change);
+  await loadModels();
+  if (b.dataset.model !== undefined) $('#modelMenu').hidden = true; else openModelMenu();
+  toast(`Now using ${$('#modelLabel').textContent} (from your next question)`, false, 2200);
+});
+async function loadUsage(path) {
+  try { setUsage(await (await api('/api/usage?path=' + encodeURIComponent(path))).json(), true); } catch {}
+}
+function setUsage(u, replace = false) {
+  usage = replace ? (u || {}) : { ...usage, ...u };
+  const frac = usage.context_window ? Math.min(1, (usage.context_used || 0) / usage.context_window) : 0;
+  $('#ringFg').style.strokeDashoffset = String(47.12 * (1 - frac));
+  $('#ctxRing').classList.toggle('warn', frac > 0.7 && frac <= 0.9);
+  $('#ctxRing').classList.toggle('full', frac > 0.9);
+  $('#ctxRing').title = usage.context_window ? `${fmtTok(usage.context_window - usage.context_used)} tokens left in this conversation` : 'Context and plan usage';
+  if (!$('#usagePop').hidden) openUsage();
+}
+function resetText(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000), now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return 'resets ' + (sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }));
+}
+function openUsage() {
+  const pop = $('#usagePop'), u = usage;
+  const pct = u.context_window ? Math.round(100 * u.context_used / u.context_window) : 0;
+  const ctx = u.context_window
+    ? `<div class="big">${fmtTok(u.context_window - u.context_used)} tokens left</div>
+       <div class="bar"><i class="${pct > 70 ? 'warn' : ''}" style="width:${Math.max(1, pct)}%"></i></div>
+       <div class="muted">${fmtTok(u.context_used)} / ${fmtTok(u.context_window)} used (${pct}%) by this deck's conversation</div>`
+    : '<div class="muted">Ask a question to see how much of the context window this conversation uses.</div>';
+  const lims = (u.limits || []).map((l) => {
+    const p = Math.round(100 * (l.used || 0));
+    return `<div class="lim"><div class="row"><span>${esc(l.label)}</span><span>${p}% used</span></div>
+      <div class="bar"><i class="${p > 80 ? 'warn' : ''}" style="width:${Math.max(1, p)}%"></i></div><div class="muted">${resetText(l.resets_at)}</div></div>`;
+  }).join('');
+  pop.innerHTML = `<h4>Context window</h4>${ctx}<hr><h4>Plan usage · ${providerLabel()}</h4>${lims || '<div class="muted">Shown after your first question.</div>'}`;
+  pop.hidden = false;
+  placeAbove(pop, $('#ctxRing'));
+}
+$('#ctxRing').onclick = (e) => { e.stopPropagation(); $('#usagePop').hidden ? openUsage() : ($('#usagePop').hidden = true); };
+window.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('#modelMenu') && !e.target.closest('#modelBtn')) $('#modelMenu').hidden = true;
+  if (!e.target.closest('#usagePop') && !e.target.closest('#ctxRing')) $('#usagePop').hidden = true;
+});
+
 $('#btnSettings').onclick = () => openSettings();
 $('#storage').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) post('/api/reveal', { path: b.dataset.reveal, open: true }); });
 $('#btnTrust').onclick = async () => {
@@ -845,6 +940,7 @@ $('#settings').addEventListener('close', async () => {
   });
   document.body.classList.remove('first-run');
   toast(firstRun ? 'All set. Your courses are being organised.' : 'Settings saved');
+  loadModels();
   loadLibrary();
   if (state.pdf) setCurrent(state.current);
 });
@@ -1204,6 +1300,7 @@ setPanelTab(panelTab);
 
 (async () => {
   cfg = await (await api('/api/config')).json();
+  loadModels();
   await loadLibrary();
   if (!cfg.setup_done) openSettings(true);
   const params = new URLSearchParams(location.search);
