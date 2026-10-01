@@ -9,7 +9,7 @@ let port = ProcessInfo.processInfo.environment["SLIDEMATE_PORT"] ?? "8767"
 let base = URL(string: "http://127.0.0.1:\(port)/")!
 let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/SlideMate")
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: WKWebView!
     var server: Process?
@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         buildMenu()
         let cfg = WKWebViewConfiguration()
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")  // right-click → Inspect Element
+        cfg.userContentController.add(self, name: "slidemate")             // native helpers for the web UI
         web = WKWebView(frame: .zero, configuration: cfg)
         web.uiDelegate = self
         web.navigationDelegate = self
@@ -173,6 +174,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         a.accessoryView = field
         a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
         completionHandler(a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+    }
+
+    // Native folder picker for the setup screen: window.webkit.messageHandlers.slidemate.postMessage({action: "pickFolder"})
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], body["action"] as? String == "pickFolder" else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose the folder that holds your course folders"
+        panel.beginSheetModal(for: window) { [weak self] resp in
+            let path = resp == .OK ? panel.url?.path : nil
+            let json = (try? JSONSerialization.data(withJSONObject: [path ?? NSNull()])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
+            self?.web.evaluateJavaScript("window.__slidemateFolder && window.__slidemateFolder(\(json)[0])")
+        }
     }
 
     // MARK: menus

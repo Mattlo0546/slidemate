@@ -1,7 +1,7 @@
 #!/bin/bash
 # SlideMate installer: dependencies + build + install the app.
-#   curl -fsSL https://raw.githubusercontent.com/<you>/slidemate/main/scripts/install.sh | bash
-#   or, from a clone:  scripts/install.sh
+#   From a clone:   scripts/install.sh               (installs to /Applications and opens it)
+#                   scripts/install.sh --build-only  (just builds build/SlideMate.app)
 set -euo pipefail
 bold() { printf "\033[1m%s\033[0m\n" "$*"; }
 ok() { printf "  \033[32m✓\033[0m %s\n" "$*"; }
@@ -40,13 +40,25 @@ else
 fi
 
 bold "4/4  Building SlideMate.app"
-scripts/build-app.sh --install
+if [ "${1:-}" = "--build-only" ]; then scripts/build-app.sh; else scripts/build-app.sh --install; fi
 
 echo
-bold "AI tutor: SlideMate uses an AI app you're signed in to (no API keys)."
-if command -v claude >/dev/null; then ok "Claude Code found"; else
-  echo "  • Claude:  curl -fsSL https://claude.ai/install.sh | bash   then: claude auth login"; fi
-if command -v codex >/dev/null; then ok "Codex CLI found"; else
-  echo "  • ChatGPT: brew install codex   then: codex login"; fi
+bold "AI tutor: SlideMate uses an AI app you're signed in to (no API keys). You need at least one:"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+have_ai=0
+if command -v claude >/dev/null; then
+  if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then ok "Claude: signed in"; have_ai=1
+  else warn "Claude is installed but not signed in. Run: claude auth login"; fi
+else echo "  • Claude:  curl -fsSL https://claude.ai/install.sh | bash   then: claude auth login"; fi
+if command -v codex >/dev/null; then
+  if codex login status 2>&1 | grep -qi "logged in"; then ok "ChatGPT (Codex): signed in"; have_ai=1
+  else warn "Codex is installed but not signed in. Run: codex login"; fi
+else echo "  • ChatGPT: brew install codex   then: codex login"; fi
+[ $have_ai = 1 ] || warn "Sign in to one of them before asking the tutor anything (SlideMate's setup screen can help)."
 echo
-bold "Done! Open SlideMate from Applications (first launch: right-click → Open)."
+if [ "${1:-}" = "--build-only" ]; then
+  bold "Built build/SlideMate.app"
+else
+  bold "Done! Opening SlideMate…"
+  open -a SlideMate 2>/dev/null || open "$HOME/Applications/SlideMate.app" 2>/dev/null || true
+fi

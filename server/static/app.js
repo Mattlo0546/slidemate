@@ -745,10 +745,14 @@ function renderRoots() {
     || '<div class="hint">No folder chosen yet.</div>';
 }
 $('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); } });
-$('#btnAddRoot').onclick = async () => {
-  const { path } = await post('/api/pick-folder');
-  if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); }
-};
+async function pickFolder() {
+  const native = window.webkit?.messageHandlers?.slidemate;
+  if (native) return new Promise((done) => { window.__slidemateFolder = done; native.postMessage({ action: 'pickFolder' }); });
+  return (await post('/api/pick-folder')).path;  // browser / dev mode: AppleScript dialog
+}
+function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); } }
+$('#btnAddRoot').onclick = async () => addRoot(await pickFolder());
+$('#btnStarter').onclick = async () => { addRoot((await post('/api/starter-folder')).path); toast('Created Documents/SlideMate: add a folder per course, or drop PDFs into it'); };
 function renderProviders() {
   const ps = sysStatus?.providers || {};
   const card = (id, name, sub) => {

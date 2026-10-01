@@ -303,6 +303,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)[:400]})
         if p == "/api/pick-folder":
             return self._json({"path": pick_folder()})
+        if p == "/api/starter-folder":
+            root = config.HOME / "Documents" / "SlideMate"
+            (root / "Example course").mkdir(parents=True, exist_ok=True)
+            (root / "README.txt").write_text(
+                "Your SlideMate library.\n\nMake one folder per course (e.g. 'Robotics', 'Philosophy of AI') and put its "
+                "lecture PDFs inside, in any sub-folders you like (e.g. 'Week 01').\nOr drop PDFs into _Inbox and SlideMate "
+                "files them into the right course for you.\n")
+            return self._json({"path": str(root)})
         if p == "/api/login":
             return self._json({"ok": providers.open_login_terminal(body.get("provider", "claude"))})
         if p == "/api/library/manage":

@@ -1,0 +1,17 @@
+name: build
+on: [push, pull_request]
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax (3.9+ stdlib only)
+        run: python3 -m py_compile server/*.py
+      - name: UI scripts parse
+        run: cp server/static/app.js "$RUNNER_TEMP/app.mjs" && node --check "$RUNNER_TEMP/app.mjs"
+      - name: Build SlideMate.app
+        run: scripts/build-app.sh
+      - name: Server starts and answers
+        run: |
+          SLIDEMATE_DATA=$RUNNER_TEMP/sm SLIDEMATE_PORT=8799 python3 server/server.py &
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8799/api/health && exit 0; sleep 0.5; done; exit 1

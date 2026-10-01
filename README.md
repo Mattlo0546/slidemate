@@ -42,9 +42,12 @@ cd slidemate
 scripts/install.sh
 ```
 
-The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app` and
-copies it to Applications. On first launch, **right-click → Open** (the app is ad-hoc signed, not notarised). A setup
-screen asks for your slides folder and your AI provider.
+The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app`,
+copies it to Applications and opens it. A setup screen asks for your slides folder (or creates one for you) and your
+AI provider. It shows whether Claude and ChatGPT are installed and signed in, and has a **Sign in** button.
+
+Because the app is built on your Mac, it opens normally. If you instead download a prebuilt copy, macOS will ask you
+to right-click → Open the first time, since it isn't notarised.
 
 **AI provider (pick one or both):**
 
@@ -114,8 +117,13 @@ scripts/dev.sh            # runs the server from source on http://127.0.0.1:8768
 scripts/build-app.sh      # builds build/SlideMate.app
 ```
 
-UI changes in `server/static/` only need a page refresh. Optional: `chrome-extension/` adds an "Open in SlideMate"
-button for PDFs open in Chrome. To install it, load it unpacked from `chrome://extensions`.
+UI changes in `server/static/` only need a page refresh. `scripts/install.sh --build-only` runs the whole installer
+without touching /Applications.
+
+## Uninstall
+
+Delete `SlideMate.app` from Applications. Your data is in `~/Library/Application Support/SlideMate` (settings, chats,
+lecture notes and recordings), so delete that folder too if you want a clean slate. Your slide folders are never touched.
 
 ## License
 
