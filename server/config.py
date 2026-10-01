@@ -43,6 +43,8 @@ DEFAULTS = {
     "write_markdown": True,         # also save chats / lecture notes as Markdown next to your slides
     "sync_command": "",             # optional, e.g. "blackboard-mcp sync"
     "sync_login_command": "",       # optional, run when sync exits with code 2 (sign-in needed)
+    "archived": [],                 # course folders / files hidden under "Archived" (nothing moves on disk)
+    "course_titles": {},            # course folder → display name (renames are display-only)
     "mcp_servers": {},              # MCP servers the tutor can use (see mcp.py)
     "sync_mcp": {"server": "", "tool": "", "login_tool": ""},  # optional: an MCP tool behind the Sync button
 }

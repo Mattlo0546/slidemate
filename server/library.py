@@ -67,9 +67,13 @@ def scan():
     """Every PDF with its course, category, week and display title."""
     with _lock:
         lib = _load(LIB_PATH, {})
+    cfg = config.load()
+    archived, titles = set(cfg.get("archived") or []), cfg.get("course_titles") or {}
     items = []
     for cdir in course_dirs():
         code, cname = split_course(cdir.name)
+        cname = titles.get(str(cdir)) or cname
+        course_archived = str(cdir) in archived
         for p in _pdfs(cdir):
             sp = str(p)
             e = lib.get(sp, {})
@@ -77,13 +81,15 @@ def scan():
             items.append({"path": sp, "name": p.name, "title": e.get("title") or p.stem.replace("_", " "),
                           "course": cdir.name, "code": code, "courseName": cname, "category": e.get("category"),
                           "week": e.get("week") if e.get("week") is not None else week_of(rel),
-                          "mtime": p.stat().st_mtime, "manual": e.get("source") == "manual"})
+                          "mtime": p.stat().st_mtime, "manual": e.get("source") == "manual",
+                          "courseDir": str(cdir), "archived": course_archived or sp in archived})
     for root in config.roots():  # PDFs sitting directly in a library folder
         if root.exists():
             for p in sorted(root.glob("*.pdf")):
                 items.append({"path": str(p), "name": p.name, "title": p.stem, "course": "Unsorted", "code": "",
                               "courseName": "Unsorted", "category": "Files", "week": None,
-                              "mtime": p.stat().st_mtime, "manual": False})
+                              "mtime": p.stat().st_mtime, "manual": False, "courseDir": None,
+                              "archived": str(p) in archived})
     for it in items:
         it["hasChat"] = chat_file(it["path"]).exists()
     return items
@@ -103,7 +109,7 @@ def classify_pending(items=None):
     if _classifying.is_set():
         return
     items = items if items is not None else scan()
-    pending = [i for i in items if i["category"] is None]
+    pending = [i for i in items if i["category"] is None and not i.get("archived")]
     if not pending:
         return
     _classifying.set()
@@ -422,3 +428,56 @@ def _write_markdown(path, chat):
             else:
                 out += ["**Tutor:**", "", m["text"], ""]
     markdown_path(path).write_text("\n".join(out))
+
+
+# ------------------------------------------------------------------ archive / rename / trash
+
+
+def _inside_library(path):
+    p = Path(path).resolve()
+    for r in config.roots():
+        try:
+            p.relative_to(r.resolve())
+            return p != r.resolve()
+        except ValueError:
+            continue
+    return False
+
+
+def move_to_trash(path):
+    """Move to the macOS Trash (recoverable), via NSFileManager so no Finder permission is needed."""
+    script = ('ObjC.import("Foundation");'
+              f'var u=$.NSURL.fileURLWithPath({json.dumps(str(path))});'
+              'var e=Ref();$.NSFileManager.defaultManager.trashItemAtURLResultingItemURLError(u,null,e);')
+    r = subprocess.run(["osascript", "-l", "JavaScript", "-e", script], capture_output=True, text=True, timeout=30)
+    return not Path(path).exists(), r.stderr.strip()
+
+
+def manage(target, action, title=None):
+    """Archive / unarchive / rename (display name) / trash a course folder or a single file."""
+    if not _inside_library(target):
+        return {"error": "That isn't inside your library folders."}
+    cfg = config.load()
+    archived = [a for a in (cfg.get("archived") or []) if a != target]
+    if action == "archive":
+        config.update({"archived": archived + [target]})
+    elif action == "unarchive":
+        config.update({"archived": archived})
+    elif action == "rename":
+        if Path(target).is_dir():
+            titles = dict(cfg.get("course_titles") or {})
+            if title:
+                titles[target] = title.strip()[:80]
+            else:
+                titles.pop(target, None)
+            config.update({"course_titles": titles})
+        else:
+            set_entry(target, title=(title or "").strip()[:120] or None)
+    elif action == "trash":
+        ok, err = move_to_trash(target)
+        if not ok:
+            return {"error": err or "Couldn't move it to the Trash."}
+        config.update({"archived": archived})
+    else:
+        return {"error": "unknown action"}
+    return {"ok": True}

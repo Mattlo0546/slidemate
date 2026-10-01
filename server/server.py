@@ -174,7 +174,10 @@ class Handler(BaseHTTPRequestHandler):
                 items = lib.scan()
                 lib.classify_pending(items)
                 ib = config.inbox()
+                arch = config.load().get("archived") or []
                 return self._json({"items": items, "classifying": lib.is_classifying(), "inbox": len(lib.inbox_files()),
+                                   "archivedCourses": [a for a in arch if os.path.isdir(a)],
+                                   "archivedPaths": [a for a in arch if not os.path.isdir(a)],
                                    "sync": lib.sync_state(), "categories": lib.CATEGORIES,
                                    "paths": {"roots": [str(r) for r in config.roots()], "inbox": str(ib) if ib else "",
                                              "data": str(config.DATA), "snaps": str(config.SNAPS)}})
@@ -302,6 +305,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"path": pick_folder()})
         if p == "/api/login":
             return self._json({"ok": providers.open_login_terminal(body.get("provider", "claude"))})
+        if p == "/api/library/manage":
+            return self._json(lib.manage(body.get("target", ""), body.get("action", ""), body.get("title")))
         if p == "/api/library/set":
             lib.set_entry(body["path"], category=body.get("category"), title=body.get("title"))
             return self._json({"ok": True})

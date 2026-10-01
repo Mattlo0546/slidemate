@@ -129,14 +129,26 @@ function group(key, head, kidsHtml, cls) {
     <button class="row-head">${icon('down', 'chev')}${head}</button><div class="kids">${kidsHtml}</div></div>`;
 }
 
+function fileRow(i, extra = '') {
+  return `<button class="file${i.path === state.path ? ' active' : ''}" data-path="${esc(i.path)}" title="${esc(i.name)}">
+      <span class="ttl">${extra}${esc(i.title)}</span>
+      ${isNew(i) ? '<span class="new" title="New, not opened yet"></span>' : ''}
+      ${i.hasChat ? icon('chat', 'has-chat') : ''}
+      ${i.week != null ? `<span class="wk">W${i.week}</span>` : ''}
+      <span class="more" data-fmenu="${esc(i.path)}" title="More">${icon('dots')}</span>
+    </button>`;
+}
+
 function renderLibrary() {
   const q = $('#libSearch').value.trim().toLowerCase();
-  const courses = [...new Set(lib.items.map((i) => i.course))].sort((a, b) => (a === 'Unsorted') - (b === 'Unsorted') || a.localeCompare(b));
+  const live = lib.items.filter((i) => !i.archived);
+  const archived = lib.items.filter((i) => i.archived);
+  const courses = [...new Set(live.map((i) => i.course))].sort((a, b) => (a === 'Unsorted') - (b === 'Unsorted') || a.localeCompare(b));
   renderChipsAndStatus(courses);
   let html = '';
   for (const course of courses) {
     if (hiddenCourses.has(course) && !q) continue;
-    let items = lib.items.filter((i) => i.course === course);
+    let items = live.filter((i) => i.course === course);
     if (q) items = items.filter((i) => (i.title + ' ' + i.name + ' ' + (i.category || '')).toLowerCase().includes(q));
     if (!items.length) continue;
     const cats = course === 'Unsorted'
@@ -146,25 +158,38 @@ function renderLibrary() {
     for (const cat of cats) {
       const its = sortItems(items.filter((i) => i.category === cat));
       if (cat === null) { catHtml += `<div class="sorting">${its.length} file${its.length > 1 ? 's' : ''} being sorted…</div>`; continue; }
-      const files = its.map((i) => `
-        <button class="file${i.path === state.path ? ' active' : ''}" data-path="${esc(i.path)}" title="${esc(i.name)}">
-          <span class="ttl">${esc(i.title)}</span>
-          ${isNew(i) ? '<span class="new" title="New, not opened yet"></span>' : ''}
-          ${i.hasChat ? icon('chat', 'has-chat') : ''}
-          ${i.week != null ? `<span class="wk">W${i.week}</span>` : ''}
-        </button>`).join('');
+      const files = its.map((i) => fileRow(i)).join('');
       catHtml += group(`${course}::${cat}`, `<span>${esc(cat)}</span><span class="count">${its.length}</span>`, files, 'cat');
     }
     const code = items[0].code || '';
     const title = course === 'Unsorted' ? 'Unsorted' : shortCourse(items[0].courseName || course);
     const head = `<span class="name">${esc(title)}</span>${code ? `<span class="code">${esc(code)}</span>` : ''}
-      <span class="count">${items.length}</span><span class="focus" data-focus="${esc(course)}" title="Show only this course">${icon('focus')}</span>`;
+      <span class="count">${items.length}</span><span class="focus" data-focus="${esc(course)}" title="Show only this course">${icon('focus')}</span>
+      ${items[0].courseDir ? `<span class="more" data-cmenu="${esc(items[0].courseDir)}" title="More">${icon('dots')}</span>` : ''}`;
     html += group(course, head, catHtml, 'course');
+  }
+  // Archived: whole courses + single files, tucked away at the bottom (collapsed by default).
+  let arch = archived;
+  if (q) arch = arch.filter((i) => (i.title + ' ' + i.name + ' ' + i.courseName).toLowerCase().includes(q));
+  if (arch.length) {
+    const byCourse = {};
+    arch.forEach((i) => (byCourse[i.course] ||= []).push(i));
+    const archKids = Object.entries(byCourse).sort().map(([course, its]) => {
+      const head = `<span class="name">${esc(shortCourse(its[0].courseName || course))}</span><span class="count">${its.length}</span>
+        ${its[0].courseDir ? `<span class="more" data-cmenu="${esc(its[0].courseDir)}" data-archived="${lib.archivedCourses?.includes(its[0].courseDir) ? 1 : ''}" title="More">${icon('dots')}</span>` : ''}`;
+      return group(`archived::${course}`, head, sortItems(its).map((i) => fileRow(i)).join(''), 'cat');
+    }).join('');
+    if (!collapsed.has('__archived_init')) { collapsed.add('__archived'); collapsed.add('__archived_init'); }
+    html += group('__archived', `${icon('inbox')}<span class="name">Archived</span><span class="count">${arch.length}</span>`, archKids, 'course archived');
   }
   $('#libList').innerHTML = html || `<div class="sorting">No files${q ? ' match' : ''}.</div>`;
 }
 
 $('#libList').addEventListener('click', (e) => {
+  const cm = e.target.closest('[data-cmenu]');
+  if (cm) { e.stopPropagation(); return openCourseMenu(cm.dataset.cmenu, cm); }
+  const fm = e.target.closest('[data-fmenu]');
+  if (fm) { e.stopPropagation(); const r = fm.getBoundingClientRect(); return openFileMenu(fm.dataset.fmenu, r.right - 220, r.bottom + 4); }
   const focus = e.target.closest('[data-focus]');
   if (focus) {
     e.stopPropagation();
@@ -188,33 +213,71 @@ $('#libList').addEventListener('click', (e) => {
 
 // right-click a file: move to another category / rename / reveal
 const libMenu = $('#libMenu');
-$('#libList').addEventListener('contextmenu', (e) => {
-  const f = e.target.closest('.file');
-  if (!f) return;
-  e.preventDefault();
-  const item = lib.items.find((i) => i.path === f.dataset.path);
+function showLibMenu(x, y) {
+  libMenu.hidden = false;
+  libMenu.style.left = Math.max(8, Math.min(x, innerWidth - libMenu.offsetWidth - 8)) + 'px';
+  libMenu.style.top = Math.max(8, Math.min(y, innerHeight - libMenu.offsetHeight - 8)) + 'px';
+}
+function openFileMenu(path, x, y) {
+  const item = lib.items.find((i) => i.path === path);
   if (!item) return;
-  const cats = item.course === 'Unsorted' ? [] : lib.categories;
+  const cats = item.course === 'Unsorted' || item.archived ? [] : lib.categories;
+  const courseArchived = item.archived && !lib.archivedPaths?.includes(item.path);
   libMenu.innerHTML = (cats.length ? `<div class="label">Move to</div>` + cats.map((c) =>
     `<button data-cat="${esc(c)}" class="${c === item.category ? 'checked' : ''}">${esc(c)}</button>`).join('') + '<hr>' : '') +
-    `<button data-lib="rename">${icon('edit')}Rename…</button><button data-lib="reveal">${icon('folder')}Show in Finder</button>`;
+    `<button data-lib="rename">${icon('edit')}Rename…</button>` +
+    (courseArchived ? '' : `<button data-lib="${item.archived ? 'unarchive' : 'archive'}">${icon('inbox')}${item.archived ? 'Unarchive' : 'Archive'}</button>`) +
+    `<button data-lib="reveal">${icon('folder')}Show in Finder</button><hr>` +
+    `<button data-lib="trash" class="danger">${icon('stop')}Move to Trash…</button>`;
   libMenu.dataset.path = item.path;
-  libMenu.hidden = false;
-  libMenu.style.left = Math.min(e.clientX, innerWidth - 240) + 'px';
-  libMenu.style.top = Math.min(e.clientY, innerHeight - libMenu.offsetHeight - 8) + 'px';
+  libMenu.dataset.kind = 'file';
+  showLibMenu(x, y);
+}
+function openCourseMenu(dir, anchor) {
+  const isArch = (lib.archivedCourses || []).includes(dir);
+  libMenu.innerHTML = `<div class="label">Course</div>
+    <button data-lib="rename">${icon('edit')}Rename…</button>
+    <button data-lib="${isArch ? 'unarchive' : 'archive'}">${icon('inbox')}${isArch ? 'Unarchive course' : 'Archive course'}</button>
+    <button data-lib="reveal">${icon('folder')}Show in Finder</button><hr>
+    <button data-lib="trash" class="danger">${icon('stop')}Move course to Trash…</button>`;
+  libMenu.dataset.path = dir;
+  libMenu.dataset.kind = 'course';
+  const r = anchor.getBoundingClientRect();
+  showLibMenu(r.right - 220, r.bottom + 4);
+}
+$('#libList').addEventListener('contextmenu', (e) => {
+  const f = e.target.closest('.file');
+  if (f) { e.preventDefault(); return openFileMenu(f.dataset.path, e.clientX, e.clientY); }
+  const c = e.target.closest('.course > .row-head [data-cmenu]') || e.target.closest('.course')?.querySelector(':scope > .row-head [data-cmenu]');
+  if (c && e.target.closest('.row-head')) { e.preventDefault(); openCourseMenu(c.dataset.cmenu, c); }
 });
 libMenu.addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   const path = libMenu.dataset.path;
   libMenu.hidden = true;
+  const kind = libMenu.dataset.kind, act = b.dataset.lib;
+  const name = kind === 'course' ? (lib.items.find((i) => i.courseDir === path)?.courseName || path.split('/').pop())
+    : (lib.items.find((i) => i.path === path)?.title || path.split('/').pop());
+  const manage = async (action, extra = {}) => {
+    const r = await post('/api/library/manage', { target: path, action, ...extra });
+    if (r.error) toast(r.error, true);
+    return !r.error;
+  };
   if (b.dataset.cat) await post('/api/library/set', { path, category: b.dataset.cat });
-  if (b.dataset.lib === 'rename') {
-    const item = lib.items.find((i) => i.path === path);
-    const t = prompt('Display name', item?.title || '');
-    if (t) await post('/api/library/set', { path, title: t.trim() });
+  if (act === 'rename') {
+    const t = prompt(kind === 'course' ? 'Course name (shown in SlideMate only; the folder isn\'t renamed)' : 'Display name', name);
+    if (t != null) await manage('rename', { title: t.trim() });
   }
-  if (b.dataset.lib === 'reveal') return post('/api/reveal', { path });
+  if (act === 'archive' && await manage('archive')) toast(`Archived "${name}". Find it under Archived at the bottom.`);
+  if (act === 'unarchive' && await manage('unarchive')) toast(`"${name}" is back in your library`);
+  if (act === 'reveal') return post('/api/reveal', { path });
+  if (act === 'trash') {
+    const what = kind === 'course' ? `the whole "${name}" course folder and everything in it` : `"${name}"`;
+    if (confirm(`Move ${what} to the Trash?\n\nYou can restore it from the Trash in Finder. Archive is the safer option if you just want it out of the way.`)) {
+      if (await manage('trash')) toast(`Moved "${name}" to the Trash`);
+    }
+  }
   loadLibrary();
 });
 
