@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlideMate</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 13v5a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-5"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12Z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-notes" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+  </defs>
+</svg>
+
+<main>
+  <aside id="library">
+    <div class="side-head">
+      <div class="brand"><span class="logo"></span>SlideMate</div>
+      <button id="btnLibClose" class="ghost icon" title="Hide library (L)"><svg><use href="#i-sidebar"/></svg></button>
+    </div>
+    <div class="search"><svg><use href="#i-search"/></svg><input id="libSearch" type="search" placeholder="Search"></div>
+    <div id="courseChips"></div>
+    <div class="side-actions">
+      <button id="btnPull" class="ghost"><svg><use href="#i-refresh"/></svg><span>Sync now</span></button>
+      <select id="libSort" title="Sort files">
+        <option value="week">Week ↑</option>
+        <option value="weekdesc">Week ↓</option>
+        <option value="recent">Recent</option>
+        <option value="name">Name</option>
+      </select>
+    </div>
+    <div id="libStatus"></div>
+    <div id="libList"></div>
+    <div class="resizer" data-panel="library" title="Drag to resize · double-click to reset"></div>
+  </aside>
+
+  <section id="center">
+    <header id="topbar">
+      <button id="btnLibrary" class="ghost icon" title="Show library (L)"><svg><use href="#i-sidebar"/></svg></button>
+      <div id="docTitle"></div>
+      <div class="spacer"></div>
+      <div id="docTools" hidden>
+        <div class="pill">
+          <button id="btnPrev" class="ghost icon" title="Previous slide (←)"><svg><use href="#i-left"/></svg></button>
+          <span id="pageLabel">–</span>
+          <button id="btnNext" class="ghost icon" title="Next slide (→)"><svg><use href="#i-right"/></svg></button>
+        </div>
+        <div class="pill">
+          <button id="btnZoomOut" class="ghost icon" title="Zoom out (−)"><svg><use href="#i-minus"/></svg></button>
+          <button id="btnFit" class="ghost" title="Fit slide">Fit</button>
+          <button id="btnZoomIn" class="ghost icon" title="Zoom in (+)"><svg><use href="#i-plus"/></svg></button>
+        </div>
+        <button id="btnRec" class="ghost" title="Record this lecture"><span class="recdot"></span><span>Record</span></button>
+        <div id="recPill" class="pill rec" hidden>
+          <span class="recdot live"></span><span id="recTime">0:00</span>
+          <button id="btnRecPause" class="ghost icon" title="Pause"><svg><use href="#i-pause"/></svg></button>
+          <button id="btnRecStop" class="ghost icon" title="Stop and write notes"><svg><use href="#i-stop"/></svg></button>
+        </div>
+        <button id="btnSnip" class="ghost" title="Snip an area (X)"><svg><use href="#i-scissors"/></svg><span>Snip</span></button>
+        <button id="btnSend" class="primary" title="Send current slide to iPad (S)"><svg><use href="#i-send"/></svg><span>Send to iPad</span></button>
+      </div>
+      <button id="btnChat" class="ghost icon" title="Tutor panel (T)"><svg><use href="#i-chat"/></svg></button>
+      <button id="btnSettings" class="ghost icon" title="Settings"><svg><use href="#i-gear"/></svg></button>
+    </header>
+    <section id="viewerWrap">
+      <div id="viewer"></div>
+      <div id="empty">
+        <div class="logo big"></div>
+        <h1>Open a deck</h1>
+        <p>Pick slides from the library, or drop a PDF anywhere. It gets filed into the right course automatically.</p>
+        <p class="kbd-row"><kbd>E</kbd> explain <kbd>S</kbd> send to iPad <kbd>X</kbd> snip <kbd>/</kbd> ask</p>
+      </div>
+      <div id="snipLayer" hidden><div id="snipRect"></div><div id="snipHint">Drag over an area · Esc to cancel</div></div>
+      <div id="snipMenu" class="menu row" hidden>
+        <button data-snip="send" class="primary"><svg><use href="#i-send"/></svg>Send to iPad</button>
+        <button data-snip="ask"><svg><use href="#i-sparkle"/></svg>Ask Claude</button>
+        <button data-snip="cancel">Cancel</button>
+      </div>
+    </section>
+  </section>
+
+  <aside id="chat">
+    <div class="resizer" data-panel="chat" title="Drag to resize · double-click to reset"></div>
+    <div id="chatHead">
+      <div class="tabs" id="panelTabs">
+        <button data-tab="chat" class="on"><svg><use href="#i-chat"/></svg>Chat</button>
+        <button data-tab="notes"><svg><use href="#i-notes"/></svg>Lecture notes</button>
+      </div>
+      <button id="btnReset" class="ghost small" title="Archive this deck's chat and start fresh"><svg><use href="#i-history"/></svg>New chat</button>
+      <button id="btnNotesMenu" class="ghost icon" title="More" hidden><svg><use href="#i-dots"/></svg></button>
+    </div>
+    <div id="subBar">
+      <div class="seg" id="chatMode">
+        <button data-mode="slide" class="on">This slide</button>
+        <button data-mode="all">All slides</button>
+      </div>
+      <div class="seg" id="notesMode" hidden>
+        <button data-nmode="slide" class="on">This slide</button>
+        <button data-nmode="summary">Summary</button>
+      </div>
+      <select id="lecturePick" hidden></select>
+    </div>
+    <div id="notesPane" hidden></div>
+    <div id="messages"></div>
+    <div id="composer">
+      <div id="chips">
+        <button data-q="Explain this slide.">Explain</button>
+        <button data-q="Explain this slide more simply, like I'm new to the topic.">Simpler</button>
+        <button data-q="Give me a concrete worked example of what this slide is about.">Example</button>
+        <button data-q="How does this slide connect to the earlier and later slides? What's the big picture?">Big picture</button>
+        <button data-q="Quiz me with 3 short questions on this slide, then wait for my answers.">Quiz me</button>
+      </div>
+      <form id="askForm">
+        <textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea>
+        <button class="send" type="submit" title="Send (Enter)"><svg><use href="#i-up"/></svg></button>
+      </form>
+      <div id="chatCtx"></div>
+    </div>
+  </aside>
+</main>
+
+<div id="ctxMenu" class="menu" hidden>
+  <button data-act="explain"><svg><use href="#i-sparkle"/></svg>Explain this slide</button>
+  <button data-act="ask"><svg><use href="#i-chat"/></svg>Ask about this slide…</button>
+  <hr>
+  <button data-act="send"><svg><use href="#i-send"/></svg>Send slide to iPad</button>
+  <button data-act="snip"><svg><use href="#i-scissors"/></svg>Snip area…</button>
+  <button data-act="copy"><svg><use href="#i-copy"/></svg>Copy slide image</button>
+</div>
+<div id="libMenu" class="menu" hidden></div>
+<div id="notesMenu" class="menu" hidden>
+  <button data-nm="import"><svg><use href="#i-notes"/></svg>Import a transcript…</button>
+  <button data-nm="regen"><svg><use href="#i-sparkle"/></svg>Rewrite notes</button>
+  <button data-nm="reveal"><svg><use href="#i-folder"/></svg>Show notes in Finder</button>
+  <hr>
+  <button data-nm="delete"><svg><use href="#i-stop"/></svg>Delete this lecture…</button>
+</div>
+<dialog id="importDlg">
+  <form method="dialog">
+    <h2>Import a lecture transcript</h2>
+    <p class="muted" style="margin-top:-6px">Paste a transcript (e.g. from Granola). Claude matches it to this deck's slides and writes the summary and slide notes.</p>
+    <label>Transcript<textarea id="importText" rows="12" placeholder="Paste the transcript here…"></textarea></label>
+    <label>Lecture date<input id="importDate" type="date"></label>
+    <div class="row"><button value="cancel" class="ghost">Cancel</button><button class="primary" value="ok">Write notes</button></div>
+  </form>
+</dialog>
+<audio id="lecAudio" hidden></audio>
+
+<dialog id="settings">
+  <form method="dialog">
+    <div id="welcome" hidden>
+      <div class="logo big"></div>
+      <h2>Welcome to SlideMate</h2>
+      <p class="muted">Study your lecture slides with an AI tutor that has read the whole deck, send slides to your iPad in one click, and turn lecture recordings into notes. Three quick steps:</p>
+    </div>
+    <h2 id="settingsTitle">Settings</h2>
+    <section>
+      <h3>1 · Your slides</h3>
+      <p class="hint">Pick the folder that holds your courses. Each sub-folder is treated as one course, e.g. <code>Uni/Robotics</code>, <code>Uni/Philosophy</code>. Files stay where they are.</p>
+      <div id="rootList"></div>
+      <button type="button" class="small" id="btnAddRoot"><svg><use href="#i-folder"/></svg>Choose folder…</button>
+    </section>
+    <section>
+      <h3>2 · AI tutor</h3>
+      <p class="hint">SlideMate uses an AI app you're already signed in to on this Mac. No API keys needed.</p>
+      <div id="providerCards"></div>
+      <div class="line" id="modelRow"></div>
+    </section>
+    <section>
+      <h3>3 · Send to iPad <span class="muted">(optional)</span></h3>
+      <label>iPad AirDrop name<input id="setIpad" placeholder="e.g. Alex's iPad"></label>
+      <div class="line"><span id="trustStatus" class="muted">Checking auto-select…</span><button type="button" id="btnTrust" class="small">Enable auto-select</button></div>
+      <label class="check"><input type="checkbox" id="setAirdrop"> AirDrop to iPad when sending</label>
+      <label class="check"><input type="checkbox" id="setClip"> Also copy to clipboard (paste on iPad via Universal Clipboard)</label>
+    </section>
+    <section class="more">
+      <h3>Lecture recording</h3>
+      <div id="recStatus" class="hint"></div>
+      <h3>Sync <span class="muted">(optional)</span></h3>
+      <p class="hint">A command that downloads new slides into your library, e.g. a Blackboard/Canvas/Moodle sync script. Exit code 2 means "sign-in needed".</p>
+      <label>Sync command<input id="setSync" placeholder="e.g. blackboard-mcp sync"></label>
+      <label>Sign-in command<input id="setSyncLogin" placeholder="e.g. blackboard-mcp login"></label>
+      <label class="check"><input type="checkbox" id="setMd"> Save chats and lecture notes as Markdown next to your slides</label>
+      <h3>Where things live</h3>
+      <div id="storage"></div>
+    </section>
+    <div class="row"><button value="cancel" class="ghost" id="btnSettingsCancel">Cancel</button><button class="primary" value="ok" id="btnSettingsSave">Save</button></div>
+  </form>
+</dialog>
+
+<div id="toasts"></div>
+<div id="dropOverlay" hidden><div>Drop PDF: it'll be filed into the right course</div></div>
+
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/katex/katex.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
