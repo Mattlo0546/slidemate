@@ -14,6 +14,7 @@ import queue
 import re
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import config
@@ -163,9 +164,126 @@ def list_tools(name):
         return {"remote": True, "tools": []}
     c = Client(spec)
     try:
-        return {"tools": [{"name": t["name"], "description": (t.get("description") or "")[:200]} for t in c.tools()]}
+        tools = [{"name": t["name"], "description": (t.get("description") or "")[:200]} for t in c.tools()]
     finally:
         c.close()
+    config.set_mcp(name, {"tools": [t["name"] for t in tools]})  # cached for sync auto-detection
+    return {"tools": tools}
+
+
+# ------------------------------------------------------------------ "Pull" through an MCP tool
+
+SYNC_RE = [re.compile(r"(^|_)(sync|pull)$", re.I), re.compile(r"sync(?!_status)|pull", re.I)]
+LOGIN_RE = [re.compile(r"(^|_)login$", re.I), re.compile(r"login|sign.?in|auth", re.I)]
+
+
+def _pick(tools, patterns):
+    for rx in patterns:
+        for t in tools:
+            if rx.search(t):
+                return t
+    return ""
+
+
+def detect_sync(name):
+    """If this server has a sync-style tool, return {"server", "tool", "login_tool"}."""
+    spec = (config.load().get("mcp_servers") or {}).get(name) or {}
+    tools = spec.get("tools") or []
+    tool = _pick(tools, SYNC_RE)
+    return {"server": name, "tool": tool, "login_tool": _pick(tools, LOGIN_RE)} if tool else None
+
+
+def autoconfigure(name):
+    """After a server is added: learn its tools, and if it can sync and nothing else is set up, use it for Pull."""
+    try:
+        list_tools(name)
+    except Exception as e:
+        print("mcp autoconfigure", name, e, flush=True)
+        return
+    cfg = config.load()
+    cur = cfg.get("sync_mcp") or {}
+    if (cur.get("server") and cur.get("tool")) or cfg.get("sync_command", "").strip():
+        return
+    found = detect_sync(name)
+    if found:
+        config.update({"sync_mcp": found})
+
+
+def _parse(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def _login_needed(d):
+    return isinstance(d, dict) and (d.get("login_required") or (isinstance(d.get("report"), dict) and d["report"].get("login_required")))
+
+
+def run_sync(name, tool, log, timeout=3600):
+    """Call a sync tool and follow it to completion.
+
+    Long syncs often run in the background and return {"running": true, …}; then we keep the server
+    alive and poll its matching status tool (e.g. bb_sync → bb_sync_status), logging progress.
+    Returns "ok" | "login_required" | "error".
+    """
+    spec = (config.load().get("mcp_servers") or {}).get(name)
+    if not spec:
+        log(f"MCP server '{name}' isn't set up")
+        return "error"
+    c = Client(spec)
+    try:
+        tools = [t["name"] for t in c.tools()]
+        status_tool = next((t for t in (f"{tool}_status", tool.replace("sync", "sync_status")) if t in tools), None)
+        log(f"Running {name} › {tool}…")
+        res = c.call(tool, {}, timeout=timeout)
+        d = _parse(res["text"])
+        t0, last = time.time(), None
+        while isinstance(d, dict) and d.get("running") and status_tool and time.time() - t0 < timeout:
+            msg = d.get("progress")
+            if msg and msg != last:
+                log(str(msg))
+                last = msg
+            time.sleep(3)
+            d = _parse(c.call(status_tool, {}, timeout=120)["text"])
+        if _login_needed(d):
+            log("Sign-in needed.")
+            return "login_required"
+        report = d.get("report") if isinstance(d, dict) and isinstance(d.get("report"), dict) else d
+        if isinstance(report, dict) and report.get("error"):
+            log(str(report["error"]))
+            # 401/403/404 on "who am I" or an auth error means the session is stale: let the caller sign in again.
+            if re.search(r"\b40[134]\b.*(users/me|auth|session|login)|unauthori[sz]ed|LoginRequired", str(report["error"]), re.I):
+                return "login_required"
+            return "error"
+        if isinstance(report, dict) and report.get("summary"):
+            log(str(report["summary"]))
+        elif d is None:
+            lines = [l for l in res["text"].splitlines() if l.strip()]
+            for l in lines[-10:]:
+                log(l)
+            if res["is_error"]:
+                return "login_required" if re.search(r"not signed in|sign.?in|expired|unauthori", res["text"], re.I) else "error"
+        else:
+            log("Done.")
+        return "ok"
+    except Exception as e:
+        log(f"Error: {e}")
+        return "error"
+    finally:
+        c.close()
+
+
+def run_login(name, tool, log):
+    log(f"Signing in with {name} › {tool}… (finish in the window that opens, if one does)")
+    try:
+        d = _parse(call_tool(name, tool, timeout=600)["text"]) or {}
+    except Exception as e:
+        log(f"Error: {e}")
+        return False
+    ok = not (isinstance(d, dict) and (d.get("ok") is False or d.get("login_required")))
+    log("Signed in." if ok else f"Sign-in didn't finish: {d.get('reason') or d.get('message') or ''}")
+    return ok
 
 
 def call_tool(name, tool, args=None, timeout=1800):

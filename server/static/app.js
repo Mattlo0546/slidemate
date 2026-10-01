@@ -80,6 +80,9 @@ function renderChipsAndStatus(courses) {
   const sy = lib.sync || {};
   const parts = [];
   $('#btnPull').hidden = !sy.configured;
+  $('#btnPull span').textContent = sy.label || 'Sync now';
+  $('#btnPull').title = sy.via ? `Runs ${sy.via}` : '';
+  const verb = (sy.label || 'Sync').startsWith('Pull') ? sy.label.replace(/^Pull/, 'Pulling') : 'Syncing';
   $('#btnPull').classList.toggle('spin', !!sy.running);
   $('#btnPull').disabled = !!sy.running;
   if (!(lib.paths?.roots || []).length) {
@@ -87,12 +90,12 @@ function renderChipsAndStatus(courses) {
       <div><button class="primary small" id="btnSetupLib">Choose folder…</button></div></div>`);
   }
   if (sy.running) {
-    parts.push(`<div class="status"><div class="t">Syncing…</div><div class="log">${esc(sy.log?.at(-1) || 'Starting')}</div></div>`);
+    parts.push(`<div class="status"><div class="t">${esc(verb)}…</div><div class="log">${esc(sy.log?.at(-1) || 'Starting')}</div></div>`);
   } else if (sy.result === 'login_required') {
-    parts.push(`<div class="status warn"><div class="t">Sync needs you to sign in</div>
-      ${sy.has_login ? '<div><button class="primary small" id="btnSyncLogin">Sign in &amp; sync</button></div>' : '<div>Run your sync tool\'s sign-in, then sync again.</div>'}</div>`);
+    parts.push(`<div class="status warn"><div class="t">Sign-in expired</div>
+      ${sy.has_login ? `<div><button class="primary small" id="btnSyncLogin">Sign in &amp; ${esc((sy.label || 'sync').replace(/^Pull/, 'pull'))}</button></div>` : '<div>Run your sync tool\'s sign-in, then try again.</div>'}</div>`);
   } else if (sy.result === 'ok') {
-    parts.push(`<div class="status"><div class="t">Synced ✓</div><div class="log">${esc(sy.log?.at(-1) || 'Up to date')}</div></div>`);
+    parts.push(`<div class="status"><div class="t">${(sy.label || '').startsWith('Pull') ? 'Pulled' : 'Synced'} ✓</div><div class="log">${esc(sy.log?.at(-1) || 'Up to date')}</div></div>`);
   } else if (sy.result === 'login_failed' || sy.result === 'error') {
     parts.push(`<div class="status warn"><div class="t">Sync didn't finish</div><div class="log">${esc(sy.log?.at(-1) || '')}</div></div>`);
   }
@@ -746,6 +749,7 @@ async function openSettings(firstRun = false) {
 const mcpTools = {};   // server → [tool names] (from the last Test)
 function renderMcp() {
   const srv = cfg.mcp_servers || {};
+  for (const [n, s] of Object.entries(srv)) if (s.tools && !mcpTools[n]) mcpTools[n] = { tools: s.tools };
   const names = Object.keys(srv);
   $('#mcpList').innerHTML = names.length ? names.map((n) => {
     const s = srv[n], t = mcpTools[n];
@@ -785,9 +789,14 @@ $('#btnMcpImport').onclick = async () => {
   $('#btnImpDo')?.addEventListener('click', async () => {
     const sel = [...box.querySelectorAll('input:checked')].map((i) => i.value);
     if (!sel.length) return;
+    box.innerHTML = '<div class="hint"><span class="spinner"></span>Importing and checking tools…</div>';
     cfg = await post('/api/mcp/import', { names: sel });
     box.hidden = true; renderMcp();
-    sel.forEach(mcpTest);
+    if (cfg.sync_mcp?.server && sel.includes(cfg.sync_mcp.server)) {
+      $('#setSyncMode').value = 'mcp'; renderSyncMode();
+      toast(`${cfg.sync_mcp.server} can sync, so a Pull button now appears in your library.`, false, 6000);
+    }
+    loadLibrary();
   });
 };
 $('#btnMcpAdd').onclick = () => { $('#mcpForm').hidden = false; $('#mcpImport').hidden = true; ['#mcpName', '#mcpCmd', '#mcpArgs', '#mcpEnv'].forEach((s) => ($(s).value = '')); };

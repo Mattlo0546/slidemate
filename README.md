@@ -82,8 +82,10 @@ Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add 
 - **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
   blackboard › bb_upcoming…" while it works. With Claude, servers are passed via `--mcp-config` with their tools
   allowed. With Codex, they're passed as `-c mcp_servers.*` overrides with `default_tools_approval_mode="approve"`.
-- **Sync**: set *Sync using → An MCP tool* to have the Sync button call a tool directly, such as `bb_sync`, with an
-  optional sign-in tool for expired sessions. SlideMate includes a small stdio MCP client for this.
+- **Pull**: if a server you add has a sync-style tool (e.g. `bb_sync`), SlideMate wires it to a **Pull from
+  <Server>** button in the library automatically, with its sign-in tool (e.g. `bb_login`) used when the session
+  has expired. Long syncs that run in the background are followed to the end by polling the matching
+  `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Sync.
 - **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
   are never sent to the UI.
 

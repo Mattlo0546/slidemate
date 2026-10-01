@@ -275,6 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                 if n in found:
                     spec = {k: v for k, v in found[n].items() if k != "source"}
                     config.set_mcp(n, {**spec, "enabled": True, "tutor": True})
+                    mcp.autoconfigure(n)  # learn its tools; a sync tool becomes the Pull button
             return self._json(config.public())
         if p == "/api/mcp/save":
             name = body.get("name", "")
@@ -284,9 +285,13 @@ class Handler(BaseHTTPRequestHandler):
             if "env" in body and isinstance(body["env"], dict):
                 spec["env"] = body["env"]
             config.set_mcp(name, spec)
+            if "command" in spec or "url" in spec:
+                mcp.autoconfigure(name)
             return self._json(config.public())
         if p == "/api/mcp/remove":
             config.set_mcp(body.get("name", ""), None)
+            if (config.load().get("sync_mcp") or {}).get("server") == body.get("name"):
+                config.update({"sync_mcp": {"server": "", "tool": "", "login_tool": ""}})
             return self._json(config.public())
         if p == "/api/mcp/tools":
             try:
