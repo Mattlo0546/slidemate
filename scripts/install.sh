@@ -28,11 +28,19 @@ bold "2/4  Homebrew packages"
 if ! command -v brew >/dev/null; then
   warn "Homebrew not found. Install it from https://brew.sh, then re-run this script."; exit 1
 fi
-brew install poppler ffmpeg uv >/dev/null && ok "poppler (PDF text), ffmpeg (audio), uv"
+LOG="$(mktemp -t slidemate-install).log"
+need=()
+for f in poppler ffmpeg uv; do brew list --versions "$f" >/dev/null 2>&1 || need+=("$f"); done
+if [ ${#need[@]} -gt 0 ]; then
+  echo "  Installing ${need[*]} (this can take a few minutes)…"
+  HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_UPGRADE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 \
+    brew install "${need[@]}" >>"$LOG" 2>&1 || { warn "brew install failed, see $LOG"; exit 1; }
+fi
+ok "poppler (PDF text), ffmpeg (audio), uv"
 
 bold "3/4  Speech-to-text for lecture recording"
 if [ "$(uname -m)" = "arm64" ]; then
-  uv tool install --quiet parakeet-mlx 2>/dev/null || uv tool upgrade --quiet parakeet-mlx || true
+  command -v parakeet-mlx >/dev/null || [ -x "$HOME/.local/bin/parakeet-mlx" ] || uv tool install --quiet parakeet-mlx >>"${LOG:-/dev/null}" 2>&1 || true
   command -v parakeet-mlx >/dev/null || export PATH="$HOME/.local/bin:$PATH"
   ok "parakeet-mlx (NVIDIA Parakeet on Apple Silicon; the model downloads on first use, ~1-2 GB)"
 else

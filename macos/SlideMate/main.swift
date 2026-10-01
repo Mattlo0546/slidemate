@@ -188,7 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         panel.message = "Choose the folder that holds your course folders"
         panel.beginSheetModal(for: window) { [weak self] resp in
             let path = resp == .OK ? panel.url?.path : nil
-            let json = (try? JSONSerialization.data(withJSONObject: [path ?? NSNull()])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
+            let value: Any = path.map { $0 as Any } ?? NSNull()
+            let json = (try? JSONSerialization.data(withJSONObject: [value])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
             self?.web.evaluateJavaScript("window.__slidemateFolder && window.__slidemateFolder(\(json)[0])")
         }
     }
