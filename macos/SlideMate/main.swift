@@ -84,9 +84,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let res = Bundle.main.resourceURL!
         let env = ProcessInfo.processInfo.environment
         let script = env["SLIDEMATE_SERVER"].map { URL(fileURLWithPath: $0) } ?? res.appendingPathComponent("server/server.py")
-        let pythons = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]
+        // /usr/bin/python3 is only a stub until the Xcode Command Line Tools are installed.
+        let cltInstalled = FileManager.default.fileExists(atPath: "/Library/Developer/CommandLineTools/usr/bin/python3")
+            || FileManager.default.fileExists(atPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/python3")
+        let pythons = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] + (cltInstalled ? ["/usr/bin/python3"] : [])
         guard let python = pythons.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            return done(false, "Python 3 wasn't found. Install the Xcode Command Line Tools: xcode-select --install")
+            return done(false, "SlideMate needs Python 3, which comes with Apple's free Command Line Tools.\n\n"
+                        + "Open Terminal, run:   xcode-select --install\nthen reopen SlideMate.")
         }
         try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
         let logURL = logDir.appendingPathComponent("server.log")

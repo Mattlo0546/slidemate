@@ -32,7 +32,24 @@ Runs locally on your Mac and uses the AI app you're already signed in to: **Clau
 - **Optional sync**: point the *Sync now* button at an MCP tool (e.g. `bb_sync`) or at any shell command that
   downloads slides.
 
-## Install
+## Download
+
+Get **SlideMate-x.y.z-macOS.zip** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest).
+Unzip it and drag **SlideMate** into Applications. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
+
+The app isn't notarised by Apple yet, so the first time you open it macOS will block it:
+- **macOS 15 (Sequoia) and later:** try to open it, then go to System Settings → Privacy & Security, scroll down
+  and click **Open Anyway**.
+- **macOS 13–14:** right-click SlideMate → **Open** → **Open**.
+- **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
+
+You'll also need:
+- **Claude Code or Codex CLI, signed in.** These are the AI that does the tutoring (see the table below).
+- **Apple's Command Line Tools** for Python: `xcode-select --install`. Most developers already have them.
+- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for ChatGPT slide text and lecture
+  recording. The setup screen tells you if anything is missing.
+
+## Install from source
 
 Requirements: macOS 13+, [Homebrew](https://brew.sh), and Claude Code **or** Codex CLI signed in.
 

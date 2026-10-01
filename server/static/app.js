@@ -766,6 +766,9 @@ function renderProviders() {
   $('#providerCards').innerHTML = card('claude', 'Claude', 'Claude Code · sign in with your Claude account (Pro/Max). Reads slides natively.')
     + card('codex', 'ChatGPT', 'Codex CLI · sign in with your ChatGPT account.')
     + `<button type="button" class="small ghost" id="btnRecheck">Re-check</button>`;
+  const pdfHint = draft.provider === 'codex' && sysStatus && !sysStatus.pdftools
+    ? '<div class="hint">ChatGPT reads slides as text, which needs poppler: <code>brew install poppler</code></div>' : '';
+  $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
   $('#modelRow').innerHTML = draft.provider === 'codex'
     ? `<label>Model <span class="muted">(blank = Codex default)</span><input id="setCodexModel" value="${esc(draft.codex_model || '')}" placeholder="default"></label>`
     : `<label>Tutor model<select id="setClaudeModel">${['sonnet', 'opus', 'haiku'].map((m) => `<option ${draft.claude_model === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>

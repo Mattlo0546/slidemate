@@ -2,6 +2,7 @@
 # Build SlideMate.app (native window + bundled server + AirDrop helper).
 #   scripts/build-app.sh            → build/SlideMate.app
 #   scripts/build-app.sh --install  → also copy it to /Applications (or ~/Applications)
+#   scripts/build-app.sh --zip      → also make dist/SlideMate-<version>-macOS.zip (what GitHub Releases ship)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
@@ -14,10 +15,21 @@ command -v swiftc >/dev/null || { echo "swiftc not found. Install the Xcode Comm
 rm -rf "$APP" "$HELPER"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Helpers" "$HELPER/Contents/MacOS"
 
+# Universal binaries: one app runs on both Apple Silicon and Intel Macs.
+universal() {  # universal <source.swift> <output>
+  local tmp; tmp=$(mktemp -d)
+  swiftc -O -target arm64-apple-macos13 "$1" -o "$tmp/arm64"
+  if swiftc -O -target x86_64-apple-macos13 "$1" -o "$tmp/x86_64" 2>/dev/null; then
+    lipo -create "$tmp/arm64" "$tmp/x86_64" -output "$2"
+  else
+    cp "$tmp/arm64" "$2"  # SDK without Intel support: Apple Silicon only
+  fi
+  rm -rf "$tmp"
+}
 echo "• Compiling SlideMate…"
-swiftc -O macos/SlideMate/main.swift -o "$APP/Contents/MacOS/SlideMate"
+universal macos/SlideMate/main.swift "$APP/Contents/MacOS/SlideMate"
 echo "• Compiling AirDrop helper…"
-swiftc -O macos/AirDrop/airdrop.swift -o "$HELPER/Contents/MacOS/SlideMateAirDrop"
+universal macos/AirDrop/airdrop.swift "$HELPER/Contents/MacOS/SlideMateAirDrop"
 
 cat > "$HELPER/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -78,6 +90,14 @@ echo "• Signing (ad-hoc)…"
 codesign -s - --force --deep "$APP" >/dev/null 2>&1
 codesign -s - --force "$HELPER" >/dev/null 2>&1
 echo "✓ Built $APP"
+
+if [ "${1:-}" = "--zip" ]; then
+  mkdir -p "$ROOT/dist"
+  ZIP="$ROOT/dist/SlideMate-$VERSION-macOS.zip"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
+fi
 
 if [ "${1:-}" = "--install" ]; then
   DEST=/Applications

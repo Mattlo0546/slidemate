@@ -1,0 +1,24 @@
+name: release
+# Push a tag like v0.1.0 → GitHub builds SlideMate.app (universal) and publishes it as a Release download.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set version from tag
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+      - name: Build universal app + zip
+        run: scripts/build-app.sh --zip
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
+          [ -f "$NOTES" ] || NOTES=/dev/null
+          gh release create "$GITHUB_REF_NAME" dist/SlideMate-*-macOS.zip \
+            --title "SlideMate ${GITHUB_REF_NAME}" --notes-file "$NOTES" --generate-notes
