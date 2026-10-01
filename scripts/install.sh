@@ -13,7 +13,7 @@ warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 if [ ! -f "$(dirname "$0")/build-app.sh" ]; then
   SRC="$HOME/.slidemate-src"
   bold "Downloading SlideMate…"
-  rm -rf "$SRC" && git clone --depth 1 "${SLIDEMATE_REPO:-https://github.com/YOUR-USERNAME/slidemate.git}" "$SRC"
+  rm -rf "$SRC" && git clone --depth 1 "${SLIDEMATE_REPO:-https://github.com/Mattlo0546/slidemate.git}" "$SRC"
   exec bash "$SRC/scripts/install.sh"
 fi
 cd "$(dirname "$0")/.."

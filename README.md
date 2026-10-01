@@ -27,6 +27,8 @@ Runs locally on your Mac and uses the AI app you're already signed in to: **Clau
 - **MCP connections**: connect MCP servers, such as your university's Blackboard or Canvas, so the tutor can check
   deadlines, announcements and materials while it answers. You can import the servers you already use in Claude
   Desktop, Claude Code or Codex with one click.
+- **Tidy library**: each course and file has a ⋯ menu to rename it (display only), archive it into a collapsed
+  *Archived* section, or move it to the Trash.
 - **Optional sync**: point the *Sync now* button at an MCP tool (e.g. `bb_sync`) or at any shell command that
   downloads slides.
 
@@ -35,7 +37,7 @@ Runs locally on your Mac and uses the AI app you're already signed in to: **Clau
 Requirements: macOS 13+, [Homebrew](https://brew.sh), and Claude Code **or** Codex CLI signed in.
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/slidemate.git
+git clone https://github.com/Mattlo0546/slidemate.git
 cd slidemate
 scripts/install.sh
 ```
