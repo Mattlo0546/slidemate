@@ -62,10 +62,8 @@ body:not(.lib-hidden) #btnLibrary { display: none; }
 .side-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 8px 14px; -webkit-app-region: drag; }
 .side-head button { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; letter-spacing: -.01em; }
-.logo { width: 18px; height: 18px; border-radius: 5px; background: var(--primary); position: relative; flex: none; }
-.logo::after { content: ""; position: absolute; left: 4px; top: 5px; width: 10px; height: 7px; border-radius: 1.5px; background: var(--primary-ink); }
-.logo.big { width: 44px; height: 44px; border-radius: 12px; margin-bottom: 14px; }
-.logo.big::after { left: 10px; top: 13px; width: 24px; height: 17px; border-radius: 3px; }
+.logo { width: 20px; height: 20px; border-radius: 5px; flex: none; display: block; box-shadow: 0 0 0 1px var(--border); }
+.logo.big { width: 52px; height: 52px; border-radius: 12px; margin-bottom: 14px; }
 .search { margin: 2px 10px 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--hover); color: var(--muted); }
 .search input { flex: 1; border: 0; background: none; outline: none; padding: 7px 0; min-width: 0; }
 #courseChips { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 8px; }
