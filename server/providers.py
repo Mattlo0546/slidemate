@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import config
+import mcp
 
 TUTOR_PROMPT = """You are a patient, sharp university tutor built into the student's slide viewer.
 You have the ENTIRE lecture deck. With each question you also get an image of the slide the student is
@@ -25,7 +26,16 @@ How to answer:
 - If a slide is terse (bullet fragments, a lone diagram), fill in what the lecturer is most likely saying.
 - Use short paragraphs, bullets and worked examples where useful. Use LaTeX with $...$ / $$...$$ for maths.
 - Be concise by default; go deeper when asked. Don't repeat the slide text back verbatim.
+- You may have tools connected to the student's accounts (e.g. their university VLE). Use them when a question needs
+  live information — deadlines, announcements, other course materials — and say briefly what you looked up.
+  Otherwise answer from the deck.
 """
+
+
+def _tool_label(name):
+    """'mcp__blackboard__bb_upcoming' → 'blackboard › bb_upcoming'."""
+    parts = name.split("__")
+    return " › ".join(parts[1:]) if parts[0] == "mcp" and len(parts) > 2 else name
 
 
 # ------------------------------------------------------------------ PDF helpers
@@ -160,6 +170,7 @@ class ClaudeSession:
             if not self.alive():
                 cmd = self.p._base(self.model) + ["--input-format", "stream-json", "--output-format", "stream-json",
                                                   "--verbose", "--include-partial-messages", "--system-prompt", TUTOR_PROMPT]
+                cmd += mcp.claude_args()
                 self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                              cwd=config.WORK, text=True, bufsize=1, env=config.ENV)
                 self.primed = False
@@ -192,6 +203,10 @@ class ClaudeSession:
                     if e.get("type") == "content_block_delta" and e.get("delta", {}).get("type") == "text_delta":
                         streamed = True
                         yield e["delta"]["text"]
+                    elif e.get("type") == "content_block_start" and e.get("content_block", {}).get("type") == "tool_use":
+                        yield ("status", f"Using {_tool_label(e['content_block'].get('name', 'a tool'))}…")
+                        if streamed:
+                            yield "\n\n"
                 elif t == "result":
                     if ev.get("is_error"):
                         yield f"\n\n**Error:** {ev.get('result') or ev.get('subtype')}"
@@ -208,6 +223,8 @@ class ClaudeSession:
 
 NO_TOOLS = ("Do not run any commands or read any files: everything you need is in this message. "
             "Answer directly.")
+NO_SHELL = ("Do not run shell commands or read files: the deck is in this message. If connected tools (MCP) are "
+            "available and the question needs live information, you may use them.")
 
 
 class Codex:
@@ -232,7 +249,7 @@ class Codex:
                 st["detail"] = str(e)[:200]
         return st
 
-    def _cmd(self, resume=None, model=None, images=(), ephemeral=False):
+    def _cmd(self, resume=None, model=None, images=(), ephemeral=False, tools=False):
         model = model if model is not None else config.load()["codex_model"]
         if resume:
             cmd = [self.bin(), "exec", "resume", resume]
@@ -241,6 +258,8 @@ class Codex:
         cmd += ["--json", "--skip-git-repo-check", "--ignore-user-config"]
         if ephemeral:
             cmd.append("--ephemeral")
+        if tools:
+            cmd += mcp.codex_args()
         if model:
             cmd += ["-m", model]
         for img in images:
@@ -266,6 +285,9 @@ class Codex:
                     yield "thread", ev.get("thread_id")
                 elif t == "item.completed" and ev.get("item", {}).get("type") == "agent_message":
                     yield "text", ev["item"].get("text", "")
+                elif t == "item.started" and ev.get("item", {}).get("type") == "mcp_tool_call":
+                    it = ev["item"]
+                    yield "status", f"Using {it.get('server')} › {it.get('tool')}…"
                 elif t in ("turn.failed", "error"):
                     msg = (ev.get("error") or {}).get("message") if isinstance(ev.get("error"), dict) else ev.get("message")
                     yield "error", msg or json.dumps(ev)[:300]
@@ -318,7 +340,7 @@ class CodexSession:
                 images.append(img)
             parts = []
             if not self.thread:
-                parts += [TUTOR_PROMPT, NO_TOOLS,
+                parts += [TUTOR_PROMPT, NO_SHELL if mcp.servers(tutor_only=True) else NO_TOOLS,
                           f'FULL DECK TEXT of "{os.path.basename(self.pdf)}" ({total} slides):\n\n{deck_text(self.pdf)}']
                 if context:
                     parts.append(context)
@@ -327,10 +349,12 @@ class CodexSession:
             parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
             first = True
             got = False
-            for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images),
+            for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True),
                                          "\n\n".join(parts), 600):
                 if kind == "thread" and val:
                     self.thread = val
+                elif kind == "status":
+                    yield ("status", val)
                 elif kind == "text" and val:
                     got = True
                     yield ("" if first else "\n\n") + val

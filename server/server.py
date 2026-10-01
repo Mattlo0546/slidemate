@@ -19,6 +19,7 @@ from pathlib import Path
 import config
 import lecture
 import library as lib
+import mcp
 import providers
 
 # ------------------------------------------------------------------ tutor sessions
@@ -30,7 +31,7 @@ SESSIONS_LOCK = threading.Lock()
 def get_session(path):
     prov = providers.current()
     model = providers.model_for("chat")
-    key = (path, prov.name, model)
+    key = (path, prov.name, model, mcp.fingerprint())
     with SESSIONS_LOCK:
         for k in [k for k in SESSIONS if k[0] == path and k != key]:
             SESSIONS.pop(k).close()  # provider/model changed: start over
@@ -177,7 +178,12 @@ class Handler(BaseHTTPRequestHandler):
                                    "paths": {"roots": [str(r) for r in config.roots()], "inbox": str(ib) if ib else "",
                                              "data": str(config.DATA), "snaps": str(config.SNAPS)}})
             if u.path == "/api/config":
-                return self._json(config.load())
+                return self._json(config.public())
+            if u.path == "/api/mcp/discover":
+                have = config.load().get("mcp_servers") or {}
+                return self._json({n: {"source": s["source"], "command": s.get("command") or s.get("url"),
+                                       "env_keys": sorted((s.get("env") or {}).keys()), "added": n in have}
+                                   for n, s in mcp.discover().items()})
             if u.path == "/api/status":
                 return self._json(status())
             if u.path == "/api/trust":
@@ -255,7 +261,32 @@ class Handler(BaseHTTPRequestHandler):
                 lib.clear_chat(body.get("path"))
             return self._json({"ok": True})
         if p == "/api/config":
-            return self._json(config.update(body))
+            config.update(body)
+            return self._json(config.public())
+        if p == "/api/mcp/import":  # copies specs (incl. env) server-side, so secrets never touch the browser
+            found = mcp.discover()
+            for n in body.get("names", []):
+                if n in found:
+                    spec = {k: v for k, v in found[n].items() if k != "source"}
+                    config.set_mcp(n, {**spec, "enabled": True, "tutor": True})
+            return self._json(config.public())
+        if p == "/api/mcp/save":
+            name = body.get("name", "")
+            if not mcp.NAME_RE.match(name):
+                return self._json({"error": "Use letters, numbers, - or _ for the name"}, 400)
+            spec = {k: body[k] for k in ("command", "args", "url", "enabled", "tutor") if k in body}
+            if "env" in body and isinstance(body["env"], dict):
+                spec["env"] = body["env"]
+            config.set_mcp(name, spec)
+            return self._json(config.public())
+        if p == "/api/mcp/remove":
+            config.set_mcp(body.get("name", ""), None)
+            return self._json(config.public())
+        if p == "/api/mcp/tools":
+            try:
+                return self._json(mcp.list_tools(body.get("name", "")))
+            except Exception as e:
+                return self._json({"error": str(e)[:400]})
         if p == "/api/pick-folder":
             return self._json({"path": pick_folder()})
         if p == "/api/login":
@@ -332,11 +363,15 @@ class Handler(BaseHTTPRequestHandler):
         user_msg = {"role": "user", "text": body.get("display") or question, "slide": page, "ts": time.time(), "snip": bool(body.get("snip"))}
         answer, gone = [], False
         for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path)):
-            answer.append(chunk)
+            if isinstance(chunk, tuple):  # ("status", "Using blackboard › bb_upcoming…"): shown live, not saved
+                msg = f"event: status\ndata: {json.dumps(chunk[1])}\n\n"
+            else:
+                answer.append(chunk)
+                msg = f"data: {json.dumps(chunk)}\n\n"
             if gone:
                 continue
             try:
-                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                self.wfile.write(msg.encode())
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 gone = True  # keep consuming so the answer still gets saved

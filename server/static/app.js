@@ -590,8 +590,9 @@ async function askInner(question) {
     const paint = () => {
       raf = 0;
       if (state.path !== path || !bot._el?.isConnected) return;
+      if (!bot.text) { bot._el.dataset.status = bot.status || 'Thinking'; return; }
       bot._el.classList.remove('thinking');
-      bot._el.innerHTML = mdRender(bot.text);
+      bot._el.innerHTML = (bot.status ? `<div class="tool-status"><span class="spinner"></span>${esc(bot.status)}</div>` : '') + mdRender(bot.text);
       if (box.scrollHeight - box.scrollTop - box.clientHeight < 140) box.scrollTop = box.scrollHeight;
     };
     for (;;) {
@@ -603,7 +604,13 @@ async function askInner(question) {
         const block = buf.slice(0, i); buf = buf.slice(i + 2);
         const line = block.split('\n').find((l) => l.startsWith('data: '));
         if (!line || block.startsWith('event: done')) continue;
+        if (block.startsWith('event: status')) {  // e.g. "Using blackboard › bb_upcoming…" (live only)
+          bot.status = JSON.parse(line.slice(6));
+          if (!raf) raf = requestAnimationFrame(paint);
+          continue;
+        }
         bot.text += JSON.parse(line.slice(6));
+        bot.status = null;
         if (!raf) raf = requestAnimationFrame(paint);
       }
     }
@@ -714,6 +721,10 @@ async function openSettings(firstRun = false) {
   $('#setClip').checked = cfg.copy_to_clipboard;
   $('#setSync').value = cfg.sync_command || '';
   $('#setSyncLogin').value = cfg.sync_login_command || '';
+  $('#setSyncMode').value = cfg.sync_mcp?.server ? 'mcp' : (cfg.sync_command ? 'command' : '');
+  $('#mcpImport').hidden = true; $('#mcpForm').hidden = true;
+  renderMcp();
+  renderSyncMode();
   $('#setMd').checked = cfg.write_markdown;
   $('#providerCards').innerHTML = '<div class="hint">Checking which AI apps are installed…</div>';
   $('#settings').showModal();
@@ -729,6 +740,86 @@ async function openSettings(firstRun = false) {
     <button type="button" class="small" data-reveal="${esc(path.split(', ')[0])}">Show</button></div>`).join('');
   refreshTrust();
 }
+// ---------- MCP connections ----------
+const mcpTools = {};   // server → [tool names] (from the last Test)
+function renderMcp() {
+  const srv = cfg.mcp_servers || {};
+  const names = Object.keys(srv);
+  $('#mcpList').innerHTML = names.length ? names.map((n) => {
+    const s = srv[n], t = mcpTools[n];
+    const res = t?.error ? `<span class="res bad">${esc(t.error)}</span>` : t?.tools ? `<span class="res ok">✓ ${t.tools.length} tools</span>` : t?.remote ? '<span class="res">remote server</span>' : '';
+    return `<div class="mcp"><div class="body"><b>${esc(n)}</b> ${res}<div class="sub">${esc(s.url || [s.command, ...(s.args || [])].join(' '))}${s.env_keys?.length ? ' · env: ' + esc(s.env_keys.join(', ')) : ''}</div></div>
+      <label class="check" title="Let the tutor call this server's tools"><input type="checkbox" data-mcp-tutor="${esc(n)}" ${s.tutor !== false ? 'checked' : ''}> Tutor</label>
+      <button type="button" class="small" data-mcp-test="${esc(n)}">Test</button>
+      <button type="button" class="small ghost" data-mcp-rm="${esc(n)}" title="Remove">✕</button></div>`;
+  }).join('') : '<div class="hint">No connections yet.</div>';
+}
+async function mcpTest(n) {
+  mcpTools[n] = { pending: true }; renderMcp();
+  const r = await post('/api/mcp/tools', { name: n });
+  mcpTools[n] = r.error ? { error: r.error } : r.remote ? { remote: true } : { tools: r.tools.map((t) => t.name) };
+  renderMcp(); renderSyncMode();
+}
+$('#mcpList').addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-mcp-test]'); if (t) return mcpTest(t.dataset.mcpTest);
+  const r = e.target.closest('[data-mcp-rm]');
+  if (r && confirm(`Remove the "${r.dataset.mcpRm}" connection?`)) { cfg = await post('/api/mcp/remove', { name: r.dataset.mcpRm }); renderMcp(); renderSyncMode(); }
+});
+$('#mcpList').addEventListener('change', async (e) => {
+  const c = e.target.closest('[data-mcp-tutor]');
+  if (c) cfg = await post('/api/mcp/save', { name: c.dataset.mcpTutor, tutor: c.checked });
+});
+$('#btnMcpImport').onclick = async () => {
+  const box = $('#mcpImport');
+  box.hidden = false; $('#mcpForm').hidden = true;
+  box.innerHTML = '<div class="hint">Looking for MCP servers in Claude Desktop, Claude Code and Codex…</div>';
+  const found = await (await api('/api/mcp/discover')).json();
+  const names = Object.keys(found).filter((n) => !found[n].added);
+  box.innerHTML = names.length ? names.map((n) => `<label class="imp"><input type="checkbox" value="${esc(n)}"><b>${esc(n)}</b>
+      <span class="muted">${esc(found[n].source)} · ${esc(found[n].command || '')}</span></label>`).join('')
+      + '<div class="line" style="justify-content:flex-end"><button type="button" class="small ghost" id="btnImpCancel">Cancel</button><button type="button" class="small primary" id="btnImpDo">Import selected</button></div>'
+    : '<div class="hint">Nothing new found. Everything is already imported, or no MCP servers are set up in those apps.</div>';
+  $('#btnImpCancel')?.addEventListener('click', () => { box.hidden = true; });
+  $('#btnImpDo')?.addEventListener('click', async () => {
+    const sel = [...box.querySelectorAll('input:checked')].map((i) => i.value);
+    if (!sel.length) return;
+    cfg = await post('/api/mcp/import', { names: sel });
+    box.hidden = true; renderMcp();
+    sel.forEach(mcpTest);
+  });
+};
+$('#btnMcpAdd').onclick = () => { $('#mcpForm').hidden = false; $('#mcpImport').hidden = true; ['#mcpName', '#mcpCmd', '#mcpArgs', '#mcpEnv'].forEach((s) => ($(s).value = '')); };
+$('#btnMcpCancel').onclick = () => { $('#mcpForm').hidden = true; };
+$('#btnMcpSave').onclick = async () => {
+  const name = $('#mcpName').value.trim();
+  let [command, ...pre] = $('#mcpCmd').value.trim().split(/\s+/);
+  const args = [...pre, ...($('#mcpArgs').value.trim() ? $('#mcpArgs').value.trim().split(/\s+/) : [])];
+  const env = Object.fromEntries($('#mcpEnv').value.split('\n').map((l) => l.trim()).filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]));
+  if (!name || !command) return toast('Name and command are required', true);
+  const body = /^https?:\/\//.test(command) ? { name, url: command, enabled: true, tutor: true } : { name, command, args, env, enabled: true, tutor: true };
+  const r = await post('/api/mcp/save', body);
+  if (r.error) return toast(r.error, true);
+  cfg = r; $('#mcpForm').hidden = true; renderMcp(); mcpTest(name);
+};
+function renderSyncMode() {
+  const mode = $('#setSyncMode').value;
+  $('#syncMcpRow').hidden = mode !== 'mcp';
+  $('#syncCmdRow').hidden = mode !== 'command';
+  if (mode !== 'mcp') return;
+  const servers = Object.keys(cfg.mcp_servers || {}).filter((n) => !(cfg.mcp_servers[n].url));
+  const cur = cfg.sync_mcp || {};
+  const sel = $('#syncServer').value || cur.server || servers[0] || '';
+  $('#syncServer').innerHTML = servers.length ? servers.map((n) => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('') : '<option value="">Add a connection first</option>';
+  const tools = mcpTools[sel]?.tools;
+  if (sel && !tools && !mcpTools[sel]?.pending && !mcpTools[sel]?.error) { mcpTest(sel); return; }
+  const opts = (list, val, blank) => (blank ? `<option value="">${blank}</option>` : '') + (list || (val ? [val] : [])).map((t) => `<option ${t === val ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const guess = (...res) => { for (const re of res) { const t = (tools || []).find((x) => re.test(x)); if (t) return t; } return ''; };
+  $('#syncTool').innerHTML = opts(tools, cur.server === sel && cur.tool ? cur.tool : guess(/(^|_)sync$/i, /sync(?!_status)/i, /pull/i, /download/i));
+  $('#syncLoginTool').innerHTML = opts(tools, cur.server === sel ? cur.login_tool : guess(/(^|_)login$/i, /login|sign.?in|auth/i), 'None');
+}
+$('#setSyncMode').addEventListener('change', renderSyncMode);
+$('#syncServer').addEventListener('change', renderSyncMode);
+
 $('#btnSettings').onclick = () => openSettings();
 $('#storage').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) post('/api/reveal', { path: b.dataset.reveal, open: true }); });
 $('#btnTrust').onclick = async () => {
@@ -746,7 +837,10 @@ $('#settings').addEventListener('close', async () => {
     library_roots: draft.library_roots, provider: draft.provider, claude_model: draft.claude_model,
     claude_notes_model: draft.claude_notes_model, codex_model: draft.codex_model,
     ipad_name: $('#setIpad').value.trim(), airdrop: $('#setAirdrop').checked, copy_to_clipboard: $('#setClip').checked,
-    sync_command: $('#setSync').value.trim(), sync_login_command: $('#setSyncLogin').value.trim(), write_markdown: $('#setMd').checked,
+    sync_command: $('#setSyncMode').value === 'command' ? $('#setSync').value.trim() : '',
+    sync_login_command: $('#setSyncMode').value === 'command' ? $('#setSyncLogin').value.trim() : '',
+    sync_mcp: $('#setSyncMode').value === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
+    write_markdown: $('#setMd').checked,
     setup_done: true,
   });
   document.body.classList.remove('first-run');

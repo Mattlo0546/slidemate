@@ -196,9 +196,20 @@ def set_entry(path, **fields):
 _sync = {"running": False, "log": [], "result": None, "last": None}
 
 
+LOGIN_HINT = re.compile(r"not signed in|sign[- ]?in|log ?in|session (has )?expired|unauthori[sz]ed|401", re.I)
+
+
+def _sync_mcp():
+    m = config.load().get("sync_mcp") or {}
+    return m if m.get("server") and m.get("tool") else None
+
+
 def sync_state():
     cfg = config.load()
-    return {"configured": bool(cfg["sync_command"].strip()), "has_login": bool(cfg["sync_login_command"].strip()),
+    m = _sync_mcp()
+    return {"configured": bool(cfg["sync_command"].strip() or m),
+            "has_login": bool(cfg["sync_login_command"].strip() or (m and m.get("login_tool"))),
+            "via": f"{m['server']} › {m['tool']}" if m else (cfg["sync_command"].strip() or None),
             "running": _sync["running"], "result": _sync["result"], "last": _sync["last"], "log": _sync["log"][-8:]}
 
 
@@ -213,14 +224,42 @@ def _run_cmd(cmd, timeout):
     return p.wait()
 
 
+def _mcp_step(server, tool):
+    import mcp
+    _sync["log"].append(f"Calling {server} › {tool}…")
+    try:
+        res = mcp.call_tool(server, tool)
+    except Exception as e:
+        _sync["log"].append(f"Error: {e}")
+        return "error"
+    lines = [l for l in res["text"].splitlines() if l.strip()]
+    _sync["log"].extend(lines[-20:] or ["(no output)"])
+    if res["is_error"]:
+        return "login_required" if LOGIN_HINT.search(res["text"]) else "error"
+    if len(res["text"]) < 400 and LOGIN_HINT.search(res["text"]) and re.search(r"not|expired|required|need", res["text"], re.I):
+        return "login_required"
+    return "ok"
+
+
 def start_sync(login_first=False):
     cfg = config.load()
-    if _sync["running"] or not cfg["sync_command"].strip():
+    m = _sync_mcp()
+    if _sync["running"] or not (cfg["sync_command"].strip() or m):
         return
     _sync.update(running=True, log=[], result=None)
 
     def run():
         try:
+            if m:  # sync through an MCP tool
+                if login_first and m.get("login_tool"):
+                    if _mcp_step(m["server"], m["login_tool"]) == "error":
+                        _sync["result"] = "login_failed"
+                        return
+                _sync["result"] = _mcp_step(m["server"], m["tool"])
+                _sync["last"] = time.time()
+                if _sync["result"] == "ok":
+                    classify_pending()
+                return
             if login_first and cfg["sync_login_command"].strip():
                 _sync["log"].append("Running sign-in…")
                 if _run_cmd(cfg["sync_login_command"], 600) != 0:

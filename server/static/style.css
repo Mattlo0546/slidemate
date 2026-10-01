@@ -290,3 +290,20 @@ body.first-run #settingsTitle, body.first-run #btnSettingsCancel, body.first-run
 .pcard code { display: inline-block; margin-top: 6px; user-select: all; }
 .pcard .acts { display: flex; gap: 6px; margin-top: 6px; }
 #modelRow label { flex: 1; margin: 0; }
+
+/* ---------- MCP connections ---------- */
+.mcp { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+.mcp .body { flex: 1; min-width: 0; }
+.mcp b { font-size: 13px; }
+.mcp .sub { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp .res { font-size: 11.5px; color: var(--muted); }
+.mcp .res.ok { color: var(--dot); }
+.mcp .res.bad { color: #e5a50a; }
+.mcp label.check { margin: 0; font-size: 12px; white-space: nowrap; }
+.subpanel { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 10px 12px; margin: 4px 0 12px; }
+.subpanel .imp { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 12.5px; }
+.subpanel .imp .muted { font-size: 11px; }
+dialog .line label { flex: 1; margin-bottom: 0; }
+#mcpEnv { display: block; width: 100%; margin-top: 5px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--panel); font: 12px ui-monospace, Menlo, monospace; resize: vertical; color: var(--text); }
+.msg.bot.thinking[data-status]::after { content: attr(data-status); }
+.msg.bot .tool-status { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }

@@ -203,10 +203,32 @@
     <section class="more">
       <h3>Lecture recording</h3>
       <div id="recStatus" class="hint"></div>
+      <h3>Connections (MCP)</h3>
+      <p class="hint">Connect tools like your university's Blackboard or Canvas so the tutor can check deadlines, announcements and course materials while it answers. These are the same MCP servers Claude Desktop and Codex use.</p>
+      <div id="mcpList"></div>
+      <div class="line" style="justify-content:flex-start">
+        <button type="button" class="small" id="btnMcpImport">Import from Claude / Codex…</button>
+        <button type="button" class="small ghost" id="btnMcpAdd">Add server…</button>
+      </div>
+      <div id="mcpImport" class="subpanel" hidden></div>
+      <div id="mcpForm" class="subpanel" hidden>
+        <label>Name<input id="mcpName" placeholder="e.g. blackboard"></label>
+        <label>Command<input id="mcpCmd" placeholder="/path/to/server   or   npx -y some-mcp-server"></label>
+        <label>Arguments <span class="muted">(space-separated)</span><input id="mcpArgs" placeholder="serve"></label>
+        <label>Environment <span class="muted">(KEY=value per line, optional)</span><textarea id="mcpEnv" rows="2"></textarea></label>
+        <div class="line" style="justify-content:flex-end"><button type="button" class="small ghost" id="btnMcpCancel">Cancel</button><button type="button" class="small primary" id="btnMcpSave">Add</button></div>
+      </div>
       <h3>Sync <span class="muted">(optional)</span></h3>
-      <p class="hint">A command that downloads new slides into your library, e.g. a Blackboard/Canvas/Moodle sync script. Exit code 2 means "sign-in needed".</p>
-      <label>Sync command<input id="setSync" placeholder="e.g. blackboard-mcp sync"></label>
-      <label>Sign-in command<input id="setSyncLogin" placeholder="e.g. blackboard-mcp login"></label>
+      <p class="hint">What the <b>Sync now</b> button runs to download new slides into your library.</p>
+      <label>Sync using<select id="setSyncMode"><option value="">Nothing</option><option value="mcp">An MCP tool</option><option value="command">A command</option></select></label>
+      <div id="syncMcpRow" hidden>
+        <div class="line"><label>Server<select id="syncServer"></select></label><label>Tool<select id="syncTool"></select></label></div>
+        <label>Sign-in tool <span class="muted">(optional, used when sync says sign-in is needed)</span><select id="syncLoginTool"></select></label>
+      </div>
+      <div id="syncCmdRow" hidden>
+        <label>Sync command<input id="setSync" placeholder="e.g. my-sync-script"></label>
+        <label>Sign-in command <span class="muted">(exit code 2 from sync = sign-in needed)</span><input id="setSyncLogin" placeholder="optional"></label>
+      </div>
       <label class="check"><input type="checkbox" id="setMd"> Save chats and lecture notes as Markdown next to your slides</label>
       <h3>Where things live</h3>
       <div id="storage"></div>

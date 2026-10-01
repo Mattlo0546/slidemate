@@ -24,8 +24,11 @@ Runs locally on your Mac and uses the AI app you're already signed in to: **Clau
 - **Organised library**: point SlideMate at your course folders. It sorts files into Lectures, Labs, Readings,
   Exercises and so on by week, without moving anything. PDFs dropped into the app or the `_Inbox` folder get filed
   into the right course automatically.
-- **Optional sync**: plug in any command that downloads slides, such as a Blackboard, Canvas or Moodle script, and get
-  a *Sync now* button.
+- **MCP connections**: connect MCP servers, such as your university's Blackboard or Canvas, so the tutor can check
+  deadlines, announcements and materials while it answers. You can import the servers you already use in Claude
+  Desktop, Claude Code or Codex with one click.
+- **Optional sync**: point the *Sync now* button at an MCP tool (e.g. `bb_sync`) or at any shell command that
+  downloads slides.
 
 ## Install
 
@@ -71,6 +74,19 @@ macOS has no silent AirDrop API, so SlideMate opens the AirDrop panel and clicks
 open Settings, enter your iPad's AirDrop name, click **Enable auto-select**, and turn on **SlideMate AirDrop** under
 System Settings → Privacy & Security → Accessibility. Without it, you click your iPad once in the panel.
 
+## MCP connections
+
+Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add server…* with a command and arguments
+(the same format as Claude Desktop's `mcpServers`).
+
+- **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
+  blackboard › bb_upcoming…" while it works. With Claude, servers are passed via `--mcp-config` with their tools
+  allowed. With Codex, they're passed as `-c mcp_servers.*` overrides with `default_tools_approval_mode="approve"`.
+- **Sync**: set *Sync using → An MCP tool* to have the Sync button call a tool directly, such as `bb_sync`, with an
+  optional sign-in tool for expired sessions. SlideMate includes a small stdio MCP client for this.
+- **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
+  are never sent to the UI.
+
 ## How it works
 
 SlideMate is a small local web app: a Python server (standard library only) on `127.0.0.1`, and a web UI using
@@ -80,6 +96,7 @@ PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) th
 | --- | --- |
 | Server, library, chats | `server/server.py`, `server/library.py` |
 | AI providers (Claude Code / Codex) | `server/providers.py` |
+| MCP connections + client | `server/mcp.py` |
 | Lecture recording → notes | `server/lecture.py` |
 | UI | `server/static/` |
 | Native app + AirDrop helper | `macos/` |
