@@ -627,9 +627,26 @@ $('#messages').addEventListener('click', (e) => { const g = e.target.closest('[d
 
 async function ask(question) {
   if (!state.pdf || !question.trim()) return;
-  if (state.busy) return toast('Still answering the last question…');
+  if (state.busy) return toast('Still answering. Press ■ Stop (or Esc) to cancel it.');
   state.busy = true;
-  try { await askInner(question); } catch (e) { toast('Error: ' + e.message, true); } finally { state.busy = false; }
+  state.abort = new AbortController();
+  setStopMode(true);
+  try { await askInner(question); } catch (e) { if (e.name !== 'AbortError') toast('Error: ' + e.message, true); }
+  finally { state.busy = false; state.abort = null; setStopMode(false); }
+}
+// While an answer is running, the send button turns into Stop.
+function setStopMode(on) {
+  const b = $('#askForm .send');
+  b.classList.toggle('stop', on);
+  b.title = on ? 'Stop (Esc)' : 'Send (Enter)';
+  b.innerHTML = `<svg><use href="#i-${on ? 'stop' : 'up'}"/></svg>`;
+}
+async function stopAnswer() {
+  if (!state.busy) return;
+  const path = state.path;
+  state.stopping = true;
+  post('/api/stop', { path }).catch(() => {});
+  state.abort?.abort();
 }
 async function askInner(question) {
   showChat();
@@ -649,15 +666,20 @@ async function askInner(question) {
   markChattedSlides();
   const box = $('#messages');
   bot._el.classList.add('thinking');
+  const t0 = Date.now();
+  const tick = setInterval(() => {  // live "Thinking it through… · 12s" so you can see it's alive
+    if (!bot.text && bot._el?.isConnected) bot._el.dataset.status = `${bot.status || 'Thinking'} · ${Math.round((Date.now() - t0) / 1000)}s`;
+  }, 1000);
+  state.stopping = false;
   try {
-    const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ path, page, total, question: fullQ, display: question, snip: !!snipNow, image }) });
+    const res = await api('/api/chat', { method: 'POST', signal: state.abort?.signal, body: JSON.stringify({ path, page, total, question: fullQ, display: question, snip: !!snipNow, image }) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '', raf = 0;
     const paint = () => {
       raf = 0;
       if (state.path !== path || !bot._el?.isConnected) return;
-      if (!bot.text) { bot._el.dataset.status = bot.status || 'Thinking'; return; }
+      if (!bot.text) { bot._el.dataset.status = `${bot.status || 'Thinking'} · ${Math.round((Date.now() - t0) / 1000)}s`; return; }
       bot._el.classList.remove('thinking');
       bot._el.innerHTML = (bot.status ? `<div class="tool-status"><span class="spinner"></span>${esc(bot.status)}</div>` : '') + mdRender(bot.text);
       if (box.scrollHeight - box.scrollTop - box.clientHeight < 140) box.scrollTop = box.scrollHeight;
@@ -686,15 +708,24 @@ async function askInner(question) {
     const item = lib.items.find((x) => x.path === path);
     if (item && !item.hasChat) { item.hasChat = true; renderLibrary(); }
   } catch (e) {
-    bot.text += `\n\n**Error:** ${e.message}`;
+    if (e.name === 'AbortError' || state.stopping) {
+      bot.text = bot.text.trim() ? bot.text.trimEnd() + '\n\n_(stopped)_' : '_Stopped before answering._';
+    } else {
+      bot.text += `\n\n**Error:** ${e.message}`;
+    }
+    bot.status = null;
     if (bot._el) bot._el.innerHTML = mdRender(bot.text);
   } finally {
+    clearInterval(tick);
     bot._el?.classList.remove('thinking');
   }
 }
 
 $('#askForm').addEventListener('submit', (e) => {
   e.preventDefault();
+  if (state.busy) {  // the button is "Stop" while answering; Enter shouldn't cancel by accident
+    return e.submitter ? stopAnswer() : toast('Still answering. Press ■ Stop (or Esc) to cancel it.');
+  }
   const v = $('#askInput').value;
   $('#askInput').value = '';
   autosize();
@@ -1074,7 +1105,7 @@ window.addEventListener('keydown', (e) => {
 }, { capture: true });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { endSnip(); hideMenus(); return; }
+  if (e.key === 'Escape') { if (state.busy && !snip && ctx.hidden) stopAnswer(); endSnip(); hideMenus(); return; }
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || $('#settings').open || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;

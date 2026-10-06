@@ -262,6 +262,12 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path
         if p == "/api/chat":
             return self._chat(body)
+        if p == "/api/stop":
+            with SESSIONS_LOCK:
+                targets = [sess for k, sess in SESSIONS.items() if k[0] == body.get("path")]
+            for sess in targets:
+                sess.cancel()
+            return self._json({"ok": True, "stopped": len(targets)})
         if p == "/api/reset":
             with SESSIONS_LOCK:
                 for k in [k for k in SESSIONS if k[0] == body.get("path")]:
@@ -401,7 +407,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 gone = True  # keep consuming so the answer still gets saved
-        lib.append_chat(path, user_msg, {"role": "bot", "text": "".join(answer), "slide": page, "ts": time.time()})
+        text = "".join(answer)
+        if getattr(sess, "cancelled", False):
+            text = (text.rstrip() + "\n\n_(stopped)_") if text.strip() else "_Stopped before answering._"
+        lib.append_chat(path, user_msg, {"role": "bot", "text": text, "slide": page, "ts": time.time()})
         if not gone:
             try:
                 self.wfile.write(b"event: done\ndata: {}\n\n")
@@ -426,11 +435,25 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(out)
 
 
+IDLE_SESSION_SECS = 30 * 60
+
+
+def reap_idle_sessions():
+    """Close tutor sessions nobody has used for a while (each holds a Claude process + MCP servers)."""
+    now = time.time()
+    with SESSIONS_LOCK:
+        idle = [k for k, s in SESSIONS.items()
+                if now - getattr(s, "last_used", now) > IDLE_SESSION_SECS and not s.lock.locked()]
+        for k in idle:
+            SESSIONS.pop(k).close()
+
+
 def housekeeping():
-    """Auto-file PDFs dropped into the Inbox and categorise new files."""
+    """Auto-file PDFs dropped into the Inbox, categorise new files, close idle tutor sessions."""
     n = 0
     while True:
         try:
+            reap_idle_sessions()
             if config.load()["setup_done"]:
                 if lib.inbox_files():
                     time.sleep(3)  # let Finder finish copying
@@ -453,12 +476,23 @@ def watch_parent():
         try:
             os.kill(pid, 0)
         except OSError:
-            for s in list(SESSIONS.values()):
-                s.close()
-            os._exit(0)
+            shutdown()
+
+
+def shutdown(*_):
+    """Quit cleanly: never leave Claude/Codex processes (and their MCP servers) running behind us."""
+    for sess in list(SESSIONS.values()):
+        try:
+            sess.close()
+        except Exception:
+            pass
+    os._exit(0)
 
 
 def main():
+    import signal
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)

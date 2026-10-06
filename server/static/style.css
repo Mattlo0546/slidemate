@@ -348,3 +348,7 @@ dialog .line label { flex: 1; margin-bottom: 0; }
 .course.archived .file { opacity: .75; }
 .menu button.danger { color: #e5484d; }
 .menu button.danger svg { color: #e5484d; }
+
+/* ---------- stop button ---------- */
+#askForm .send.stop { background: var(--text); }
+#askForm .send.stop svg { fill: var(--primary-ink); stroke: none; width: 12px; height: 12px; }

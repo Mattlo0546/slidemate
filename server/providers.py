@@ -7,6 +7,7 @@ import base64
 import glob
 import json
 import os
+import queue
 import re
 import subprocess
 import time
@@ -196,34 +197,78 @@ def _claude_deck_blocks(pdf):
     return [intro, {"type": "text", "text": deck_text(pdf, 600_000)}]
 
 
+IDLE_TIMEOUT = 150  # seconds of total silence (no events at all, not even thinking) before we give up
+
+
 class ClaudeSession:
-    """One long-lived `claude -p` process per deck: the deck is sent once, follow-ups keep full context."""
+    """One long-lived `claude -p` process per deck: the deck is sent once, follow-ups keep full context.
+
+    A reader thread moves Claude's output onto a queue, so a turn can be stopped at any moment, a silent
+    process is detected (IDLE_TIMEOUT), and stderr is drained so Claude can never block on a full pipe.
+    """
 
     def __init__(self, provider, pdf, model, effort=""):
         self.p, self.pdf, self.model, self.effort = provider, pdf, model, effort
         self.lock = threading.Lock()
         self.proc = None
+        self.q = None
         self.primed = False
+        self.cancelled = False
+        self.last_used = time.time()
+        self.stderr_tail = ""
 
     def alive(self):
         return self.proc is not None and self.proc.poll() is None
 
     def close(self):
-        if self.alive():
-            self.proc.kill()
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
         self.proc = None
+        self.primed = False
+
+    def cancel(self):
+        """Stop the current answer (the next question starts a fresh process with the chat history as context)."""
+        self.cancelled = True
+        self.close()
+
+    def _start(self):
+        cmd = self.p._base(self.model) + ["--input-format", "stream-json", "--output-format", "stream-json",
+                                          "--verbose", "--include-partial-messages", "--system-prompt", TUTOR_PROMPT]
+        cmd += mcp.claude_args()
+        if self.effort in CLAUDE_EFFORTS:
+            cmd += ["--effort", self.effort]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                cwd=config.WORK, text=True, bufsize=1, env=config.ENV)
+        q = queue.Queue()
+
+        def pump_out():
+            for line in proc.stdout:
+                q.put(line)
+            q.put(None)  # EOF
+
+        def pump_err():
+            for line in proc.stderr:
+                self.stderr_tail = (self.stderr_tail + line)[-2000:]
+        threading.Thread(target=pump_out, daemon=True).start()
+        threading.Thread(target=pump_err, daemon=True).start()
+        self.proc, self.q, self.primed = proc, q, False
 
     def ask(self, question, page, total, image_b64, context=""):
-        with self.lock:
+        # A previous answer that nobody is waiting for any more (page reloaded, deck switched) must not
+        # block this one: cancel it and take over.
+        if not self.lock.acquire(timeout=1):
+            self.cancel()
+            if not self.lock.acquire(timeout=10):
+                yield "**Still finishing the previous answer.** Press Stop, then ask again."
+                return
+        try:
+            self.cancelled = False
+            self.last_used = time.time()
             if not self.alive():
-                cmd = self.p._base(self.model) + ["--input-format", "stream-json", "--output-format", "stream-json",
-                                                  "--verbose", "--include-partial-messages", "--system-prompt", TUTOR_PROMPT]
-                cmd += mcp.claude_args()
-                if self.effort in CLAUDE_EFFORTS:
-                    cmd += ["--effort", self.effort]
-                self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                             cwd=config.WORK, text=True, bufsize=1, env=config.ENV)
-                self.primed = False
+                self._start()
             content = []
             if not self.primed:
                 content += _claude_deck_blocks(self.pdf)
@@ -236,46 +281,85 @@ class ClaudeSession:
             try:
                 self.proc.stdin.write(json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n")
                 self.proc.stdin.flush()
-            except BrokenPipeError:
+            except (BrokenPipeError, OSError):
                 self.close()
                 yield "\n\n*(Claude restarted, please ask again.)*"
                 return
             self.primed = True
-            streamed = False
-            for line in self.proc.stdout:
-                try:
-                    ev = json.loads(line)
-                except ValueError:
-                    continue
-                t = ev.get("type")
-                if t == "stream_event":
-                    e = ev.get("event", {})
-                    if e.get("type") == "content_block_delta" and e.get("delta", {}).get("type") == "text_delta":
-                        streamed = True
-                        yield e["delta"]["text"]
-                    elif e.get("type") == "content_block_start" and e.get("content_block", {}).get("type") == "tool_use":
+            yield from self._read_turn()
+        finally:
+            self.last_used = time.time()
+            self.lock.release()
+
+    def _read_turn(self):
+        streamed, thinking = False, False
+        q = self.q
+        wait = IDLE_TIMEOUT
+        while True:
+            try:
+                line = q.get(timeout=wait)
+            except queue.Empty:
+                self.close()
+                yield (f"\n\n**Claude didn't respond for {IDLE_TIMEOUT // 60} minutes, so I stopped it.** "
+                       "Please ask again (it may be busy right now).")
+                return
+            if line is None:  # process ended
+                if self.cancelled:
+                    return
+                err = self.stderr_tail.strip()[-600:]
+                self.close()
+                yield "\n\n**Claude stopped unexpectedly.** Please ask again." + (f"\n\n`{err}`" if err else "")
+                return
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            wait = IDLE_TIMEOUT
+            t = ev.get("type")
+            if t == "system" and ev.get("subtype") == "api_retry":
+                # Claude's servers are overloaded / rate-limited: Claude Code retries on its own. Say so, and
+                # don't let our silence timeout cut a legitimate retry wait short.
+                delay = (ev.get("retry_delay_ms") or 0) / 1000
+                wait = max(IDLE_TIMEOUT, delay + 60)
+                why = "you've hit a usage limit" if ev.get("error_status") == 429 or ev.get("error") == "rate_limit" \
+                    else "Claude's servers are busy" if ev.get("error_status") in (529, 503, 500, 502) or ev.get("error") == "overloaded" \
+                    else "Claude didn't answer in time"
+                yield ("status", f"{why[0].upper() + why[1:]}, retrying (attempt {ev.get('attempt', '?')} of {ev.get('max_retries', '?')})"
+                                 + (f" in {round(delay)}s" if delay >= 2 else "") + "…")
+                continue
+            if t == "stream_event":
+                e = ev.get("event", {})
+                et = e.get("type")
+                if et == "content_block_delta" and e.get("delta", {}).get("type") == "text_delta":
+                    streamed = True
+                    yield e["delta"]["text"]
+                elif et == "content_block_start":
+                    kind = e.get("content_block", {}).get("type")
+                    if kind == "tool_use":
                         yield ("status", f"Using {_tool_label(e['content_block'].get('name', 'a tool'))}…")
                         if streamed:
                             yield "\n\n"
-                elif t == "rate_limit_event":
-                    info = ev.get("rate_limit_info") or {}
-                    wins = info.get("unifiedWindows") or {}
-                    LIMITS["claude"] = [{"label": window_label(key=k), "used": w.get("utilization"), "resets_at": w.get("resetsAt")}
-                                        for k, w in wins.items()] or LIMITS.get("claude", [])
-                elif t == "result":
-                    if ev.get("is_error"):
-                        yield f"\n\n**Error:** {ev.get('result') or ev.get('subtype')}"
-                    elif not streamed and ev.get("result"):
-                        yield ev["result"]
-                    u = ev.get("usage") or {}
-                    mu = next(iter((ev.get("modelUsage") or {}).items()), (None, {}))
-                    used = sum(u.get(k, 0) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"))
-                    yield ("usage", {"context_used": used, "context_window": mu[1].get("contextWindow"), "model": mu[0],
-                                     "limits": LIMITS.get("claude", []), "at": time.time()})
-                    return
-            err = self.proc.stderr.read()[-800:] if self.proc else ""
-            self.close()
-            yield f"\n\n**Claude exited unexpectedly.** {err}"
+                    elif kind in ("thinking", "redacted_thinking") and not thinking:
+                        thinking = True
+                        yield ("status", "Thinking it through…")
+            elif t == "system" and ev.get("subtype") == "status" and ev.get("status") == "requesting" and not streamed:
+                yield ("status", "Reading the deck…")
+            elif t == "rate_limit_event":
+                info = ev.get("rate_limit_info") or {}
+                wins = info.get("unifiedWindows") or {}
+                LIMITS["claude"] = [{"label": window_label(key=k), "used": w.get("utilization"), "resets_at": w.get("resetsAt")}
+                                    for k, w in wins.items()] or LIMITS.get("claude", [])
+            elif t == "result":
+                if ev.get("is_error"):
+                    yield f"\n\n**Error:** {ev.get('result') or ev.get('subtype')}"
+                elif not streamed and ev.get("result"):
+                    yield ev["result"]
+                u = ev.get("usage") or {}
+                mu = next(iter((ev.get("modelUsage") or {}).items()), (None, {}))
+                used = sum(u.get(k, 0) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"))
+                yield ("usage", {"context_used": used, "context_window": mu[1].get("contextWindow"), "model": mu[0],
+                                 "limits": LIMITS.get("claude", []), "at": time.time()})
+                return
 
 
 # ------------------------------------------------------------------ Codex CLI (ChatGPT sign-in)
@@ -328,10 +412,12 @@ class Codex:
             cmd += ["-i", str(img)]
         return cmd + ["-"]  # prompt comes on stdin (-i would otherwise swallow it)
 
-    def _run(self, cmd, prompt, timeout):
+    def _run(self, cmd, prompt, timeout, on_proc=None):
         """Run codex exec; yields ("thread", id) and ("text", message) events."""
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 cwd=config.WORK, env=config.ENV, bufsize=1)
+        if on_proc:
+            on_proc(proc)
         proc.stdin.write(prompt)
         proc.stdin.close()
         timer = threading.Timer(timeout, proc.kill)
@@ -387,14 +473,44 @@ class CodexSession:
         self.p, self.pdf, self.model, self.effort = provider, pdf, model, effort
         self.lock = threading.Lock()
         self.thread = None
+        self.proc = None
+        self.cancelled = False
+        self.last_used = time.time()
         self.dir = config.WORK / f"codex-{uuid.uuid4().hex[:8]}"
         self.dir.mkdir(parents=True, exist_ok=True)
 
     def close(self):
+        self.cancel()
         self.thread = None
 
+    def cancel(self):
+        self.cancelled = True
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+
+    def _set_proc(self, proc):
+        self.proc = proc
+
     def ask(self, question, page, total, image_b64, context=""):
-        with self.lock:
+        if not self.lock.acquire(timeout=1):  # an abandoned answer is still running: stop it and take over
+            self.cancel()
+            if not self.lock.acquire(timeout=10):
+                yield "**Still finishing the previous answer.** Press Stop, then ask again."
+                return
+        try:
+            self.cancelled = False
+            self.last_used = time.time()
+            yield from self._ask(question, page, total, image_b64, context)
+        finally:
+            self.proc = None
+            self.last_used = time.time()
+            self.lock.release()
+
+    def _ask(self, question, page, total, image_b64, context):
+        if True:
             images = []
             if image_b64:
                 img = self.dir / f"slide-{page}.jpg"
@@ -413,7 +529,9 @@ class CodexSession:
             got = False
             for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True,
                                                      effort=self.effort),
-                                         "\n\n".join(parts), 600):
+                                         "\n\n".join(parts), 600, on_proc=self._set_proc):
+                if self.cancelled:
+                    return
                 if kind == "thread" and val:
                     self.thread = val
                 elif kind == "status":
