@@ -9,7 +9,7 @@ let port = ProcessInfo.processInfo.environment["SLIDEMATE_PORT"] ?? "8767"
 let base = URL(string: "http://127.0.0.1:\(port)/")!
 let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/SlideMate")
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var web: WKWebView!
     var server: Process?
@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         window.title = "SlideMate"
         window.minSize = NSSize(width: 900, height: 560)
         window.contentView = web
+        window.delegate = self
         if !window.setFrameUsingName("SlideMateMain") { window.center() }
         window.setFrameAutosaveName("SlideMateMain")
         window.makeKeyAndOrderFront(nil)
@@ -61,6 +62,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+
+    // MARK: don't lose a lecture recording
+
+    var quitConfirmed = false
+
+    /// Asks the page whether a lecture is being recorded. If so, offers to keep recording or to stop (saving the
+    /// audio and writing notes) before going ahead. `proceed` is called only if it's OK to quit/close.
+    func confirmIfRecording(action: String, proceed: @escaping () -> Void, cancel: @escaping () -> Void) {
+        guard ready, !quitConfirmed else { return proceed() }
+        web.evaluateJavaScript("window.__slidemateRecording ? window.__slidemateRecording() : {recording:false}") { [weak self] result, _ in
+            guard let self = self else { return }
+            let info = result as? [String: Any]
+            guard (info?["recording"] as? Bool) == true else { return proceed() }
+            let secs = (info?["seconds"] as? Int) ?? 0
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "A lecture is being recorded"
+            alert.informativeText = "You've recorded \(secs / 60) min \(secs % 60) s. If you \(action) now, SlideMate stops the recording "
+                + "and saves the audio. Your notes are written next time SlideMate is open."
+            alert.addButton(withTitle: "Keep Recording")
+            alert.addButton(withTitle: "Stop & \(action.capitalized)")
+            if alert.runModal() == .alertFirstButtonReturn { return cancel() }
+            self.quitConfirmed = true
+            // Finish the recording properly (flush the last audio, start transcription) before quitting.
+            self.web.callAsyncJavaScript("return await window.__slidemateStopRecording()", arguments: [:], in: nil, in: .page) { _ in
+                proceed()
+            }
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard ready, !quitConfirmed else { return .terminateNow }
+        confirmIfRecording(action: "quit", proceed: { NSApp.reply(toApplicationShouldTerminate: true) },
+                           cancel: { NSApp.reply(toApplicationShouldTerminate: false) })
+        return .terminateLater
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard ready, !quitConfirmed else { return true }
+        confirmIfRecording(action: "close", proceed: { [weak self] in self?.quitConfirmed = true; sender.close() }, cancel: {})
+        return false
+    }
     func applicationWillTerminate(_ note: Notification) { server?.terminate() }
 
     // MARK: server

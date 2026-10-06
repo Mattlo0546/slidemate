@@ -192,69 +192,138 @@
 <audio id="lecAudio" hidden></audio>
 
 <dialog id="settings">
-  <form method="dialog">
-    <div id="welcome" hidden>
-      <img class="logo big" src="logo.svg" alt="">
-      <h2>Welcome to SlideMate</h2>
-      <p class="muted">Study your lecture slides with an AI tutor that has read the whole deck, send slides to your iPad in one click, and turn lecture recordings into notes. Three quick steps:</p>
+  <form method="dialog" class="set-shell" onsubmit="return false">
+    <nav class="set-nav">
+      <div class="set-nav-title">Settings</div>
+      <button type="button" data-pane="general"><svg><use href="#i-folder"/></svg>Library</button>
+      <button type="button" data-pane="ai"><svg><use href="#i-sparkle"/></svg>AI tutor</button>
+      <button type="button" data-pane="ipad"><svg><use href="#i-send"/></svg>Send to iPad</button>
+      <button type="button" data-pane="recording"><svg><use href="#i-mic"/></svg>Lecture recording</button>
+      <button type="button" data-pane="connections"><svg><use href="#i-refresh"/></svg>Connections &amp; sync</button>
+      <button type="button" data-pane="storage"><svg><use href="#i-inbox"/></svg>Storage</button>
+    </nav>
+    <div class="set-main">
+      <header class="set-head">
+        <h2 id="paneTitle">Library</h2>
+        <span id="savedHint" class="muted small"></span>
+        <button type="button" class="ghost icon" id="btnSettingsClose" title="Close (Esc)">✕</button>
+      </header>
+      <div class="set-body">
+        <div id="welcome" class="set-welcome" hidden>
+          <img class="logo big" src="logo.svg" alt="">
+          <div><b>Welcome to SlideMate</b>
+          <p>Study lecture slides with an AI tutor that has read the whole deck, send slides to your iPad in one click, and turn lecture recordings into notes. Pick your slides folder and AI below, then you're ready.</p></div>
+        </div>
+
+        <section class="pane" data-pane="general">
+          <div class="set-group">
+            <div class="set-row col">
+              <div class="set-label"><b>Slides folders</b><span>Each sub-folder is one course, e.g. <code>Uni/Robotics</code>. Files stay where they are.</span></div>
+              <div id="rootList"></div>
+              <div class="set-actions">
+                <button type="button" class="small" id="btnAddRoot"><svg><use href="#i-folder"/></svg>Add folder…</button>
+                <button type="button" class="small ghost" id="btnStarter" title="Creates Documents/SlideMate">No folder yet? Create one</button>
+              </div>
+            </div>
+          </div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Save Markdown copies</b><span>Keep chats and lecture notes as Markdown next to your slides (handy for Obsidian).</span></div>
+              <input type="checkbox" class="switch" id="setMd">
+            </label>
+          </div>
+        </section>
+
+        <section class="pane" data-pane="ai">
+          <div class="set-group">
+            <div class="set-row col">
+              <div class="set-label"><b>Provider</b><span>SlideMate uses an AI app you're already signed in to on this Mac, so no API keys.</span></div>
+              <div id="providerCards" class="pcards"></div>
+            </div>
+          </div>
+          <div class="set-group" id="modelRow"></div>
+        </section>
+
+        <section class="pane" data-pane="ipad">
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>iPad AirDrop name</b><span>As shown in AirDrop (iPad → Settings → General → About → Name).</span></div>
+              <input id="setIpad" class="set-input" placeholder="e.g. Alex's iPad">
+            </label>
+            <div class="set-row">
+              <div class="set-label"><b>Auto-select iPad</b><span id="trustStatus">Checking…</span></div>
+              <button type="button" id="btnTrust" class="small">Enable</button>
+            </div>
+          </div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>AirDrop when sending</b><span>Send to iPad opens AirDrop (and picks your iPad if auto-select is on).</span></div>
+              <input type="checkbox" class="switch" id="setAirdrop">
+            </label>
+            <label class="set-row">
+              <div class="set-label"><b>Copy to clipboard</b><span>Also copy the image, so you can paste it on iPad via Universal Clipboard.</span></div>
+              <input type="checkbox" class="switch" id="setClip">
+            </label>
+          </div>
+        </section>
+
+        <section class="pane" data-pane="recording">
+          <div class="set-group">
+            <div class="set-row">
+              <div class="set-label"><b>Speech-to-text</b><span id="recStatus"></span></div>
+              <span id="recBadge" class="pill-status"></span>
+            </div>
+            <div class="set-row">
+              <div class="set-label"><b>How it works</b><span>Press Record in class. SlideMate transcribes on this Mac with NVIDIA Parakeet, notes which slide you were on, then writes a summary and per-slide notes with the lecturer's exact words.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane" data-pane="connections">
+          <div class="set-group">
+            <div class="set-row col">
+              <div class="set-label"><b>MCP servers</b><span>Connect tools like your university's Blackboard or Canvas. The tutor can check deadlines and announcements, and a sync tool becomes a Pull button.</span></div>
+              <div id="mcpList"></div>
+              <div class="set-actions">
+                <button type="button" class="small" id="btnMcpImport">Import from Claude / Codex…</button>
+                <button type="button" class="small ghost" id="btnMcpAdd">Add server…</button>
+              </div>
+              <div id="mcpImport" class="subpanel" hidden></div>
+              <div id="mcpForm" class="subpanel" hidden>
+                <label class="field">Name<input id="mcpName" placeholder="e.g. blackboard"></label>
+                <label class="field">Command<input id="mcpCmd" placeholder="/path/to/server   or   npx -y some-mcp-server"></label>
+                <label class="field">Arguments <span class="muted">(space-separated)</span><input id="mcpArgs" placeholder="serve"></label>
+                <label class="field">Environment <span class="muted">(KEY=value per line, optional)</span><textarea id="mcpEnv" rows="2"></textarea></label>
+                <div class="set-actions end"><button type="button" class="small ghost" id="btnMcpCancel">Cancel</button><button type="button" class="small primary" id="btnMcpSave">Add</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Sync / Pull button</b><span>What the library's Pull button runs to download new slides.</span></div>
+              <select id="setSyncMode" class="set-input"><option value="">Off</option><option value="mcp">An MCP tool</option><option value="command">A shell command</option></select>
+            </label>
+            <div id="syncMcpRow" hidden>
+              <label class="set-row"><div class="set-label"><b>Server</b></div><select id="syncServer" class="set-input"></select></label>
+              <label class="set-row"><div class="set-label"><b>Sync tool</b></div><select id="syncTool" class="set-input"></select></label>
+              <label class="set-row"><div class="set-label"><b>Sign-in tool</b><span>Used when the sync says you need to sign in again.</span></div><select id="syncLoginTool" class="set-input"></select></label>
+            </div>
+            <div id="syncCmdRow" hidden>
+              <label class="set-row"><div class="set-label"><b>Sync command</b></div><input id="setSync" class="set-input mono" placeholder="e.g. my-sync-script"></label>
+              <label class="set-row"><div class="set-label"><b>Sign-in command</b><span>Run when the sync command exits with code 2.</span></div><input id="setSyncLogin" class="set-input mono" placeholder="optional"></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane" data-pane="storage">
+          <div class="set-group" id="storage"></div>
+        </section>
+      </div>
+      <footer class="set-foot" id="setFoot" hidden>
+        <span class="muted small">You can change all of this later in Settings (⌘,).</span>
+        <button type="button" class="primary" id="btnSettingsSave">Get started</button>
+      </footer>
     </div>
-    <h2 id="settingsTitle">Settings</h2>
-    <section>
-      <h3>1 · Your slides</h3>
-      <p class="hint">Pick the folder that holds your courses. Each sub-folder is treated as one course, e.g. <code>Uni/Robotics</code>, <code>Uni/Philosophy</code>. Files stay where they are.</p>
-      <div id="rootList"></div>
-      <div class="line" style="justify-content:flex-start">
-        <button type="button" class="small" id="btnAddRoot"><svg><use href="#i-folder"/></svg>Choose folder…</button>
-        <button type="button" class="small ghost" id="btnStarter" title="Creates Documents/SlideMate">No folder yet? Create one for me</button>
-      </div>
-    </section>
-    <section>
-      <h3>2 · AI tutor</h3>
-      <p class="hint">SlideMate uses an AI app you're already signed in to on this Mac. No API keys needed.</p>
-      <div id="providerCards"></div>
-      <div class="line" id="modelRow"></div>
-    </section>
-    <section>
-      <h3>3 · Send to iPad <span class="muted">(optional)</span></h3>
-      <label>iPad AirDrop name<input id="setIpad" placeholder="e.g. Alex's iPad"></label>
-      <div class="line"><span id="trustStatus" class="muted">Checking auto-select…</span><button type="button" id="btnTrust" class="small">Enable auto-select</button></div>
-      <label class="check"><input type="checkbox" id="setAirdrop"> AirDrop to iPad when sending</label>
-      <label class="check"><input type="checkbox" id="setClip"> Also copy to clipboard (paste on iPad via Universal Clipboard)</label>
-    </section>
-    <section class="more">
-      <h3>Lecture recording</h3>
-      <div id="recStatus" class="hint"></div>
-      <h3>Connections (MCP)</h3>
-      <p class="hint">Connect tools like your university's Blackboard or Canvas so the tutor can check deadlines, announcements and course materials while it answers. These are the same MCP servers Claude Desktop and Codex use.</p>
-      <div id="mcpList"></div>
-      <div class="line" style="justify-content:flex-start">
-        <button type="button" class="small" id="btnMcpImport">Import from Claude / Codex…</button>
-        <button type="button" class="small ghost" id="btnMcpAdd">Add server…</button>
-      </div>
-      <div id="mcpImport" class="subpanel" hidden></div>
-      <div id="mcpForm" class="subpanel" hidden>
-        <label>Name<input id="mcpName" placeholder="e.g. blackboard"></label>
-        <label>Command<input id="mcpCmd" placeholder="/path/to/server   or   npx -y some-mcp-server"></label>
-        <label>Arguments <span class="muted">(space-separated)</span><input id="mcpArgs" placeholder="serve"></label>
-        <label>Environment <span class="muted">(KEY=value per line, optional)</span><textarea id="mcpEnv" rows="2"></textarea></label>
-        <div class="line" style="justify-content:flex-end"><button type="button" class="small ghost" id="btnMcpCancel">Cancel</button><button type="button" class="small primary" id="btnMcpSave">Add</button></div>
-      </div>
-      <h3>Sync <span class="muted">(optional)</span></h3>
-      <p class="hint">What the <b>Sync now</b> button runs to download new slides into your library.</p>
-      <label>Sync using<select id="setSyncMode"><option value="">Nothing</option><option value="mcp">An MCP tool</option><option value="command">A command</option></select></label>
-      <div id="syncMcpRow" hidden>
-        <div class="line"><label>Server<select id="syncServer"></select></label><label>Tool<select id="syncTool"></select></label></div>
-        <label>Sign-in tool <span class="muted">(optional, used when sync says sign-in is needed)</span><select id="syncLoginTool"></select></label>
-      </div>
-      <div id="syncCmdRow" hidden>
-        <label>Sync command<input id="setSync" placeholder="e.g. my-sync-script"></label>
-        <label>Sign-in command <span class="muted">(exit code 2 from sync = sign-in needed)</span><input id="setSyncLogin" placeholder="optional"></label>
-      </div>
-      <label class="check"><input type="checkbox" id="setMd"> Save chats and lecture notes as Markdown next to your slides</label>
-      <h3>Where things live</h3>
-      <div id="storage"></div>
-    </section>
-    <div class="row"><button value="cancel" class="ghost" id="btnSettingsCancel">Cancel</button><button class="primary" value="ok" id="btnSettingsSave">Save</button></div>
   </form>
 </dialog>
 

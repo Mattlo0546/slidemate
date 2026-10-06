@@ -422,3 +422,25 @@ def notes_context(path, limit=40000):
             parts.append(f"Slide {n} — lecturer's points:\n{s['notes_md']}\nVerbatim: {quotes}")
         return "\n\n".join(parts)[:limit]
     return ""
+
+
+def resume_unfinished(stale_after=180):
+    """On startup: finish lectures whose processing was cut off (app quit mid-transcription), and recordings that
+    were abandoned (crash/force-quit: no new audio for a few minutes), so nothing is left stuck."""
+    for d in LECTURES.iterdir():
+        m = lib._load(d / "meta.json", None)
+        if not m:
+            continue
+        st, lid = m.get("status"), m.get("id")
+        try:
+            if st in ("transcribing",):
+                threading.Thread(target=_finish, args=(lid, None), daemon=True).start()
+            elif st == "writing":
+                regenerate(lid)
+            elif st == "recording":
+                audio = audio_path(lid)
+                if audio.exists() and time.time() - audio.stat().st_mtime > stale_after:
+                    save_meta(lid, status="transcribing", ended=audio.stat().st_mtime, note="finished automatically after the app closed")
+                    threading.Thread(target=_finish, args=(lid, None), daemon=True).start()
+        except Exception as e:
+            print("resume failed", lid, e, flush=True)

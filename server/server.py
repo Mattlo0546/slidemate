@@ -495,6 +495,7 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
+    threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
     print(f"SlideMate running on http://127.0.0.1:{config.PORT}  (data: {config.DATA})", flush=True)

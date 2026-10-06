@@ -796,7 +796,8 @@ async function refreshTrust() {
   $('#trustStatus').textContent = 'Checking auto-select…';
   const { trusted } = await (await api('/api/trust')).json();
   if (trusted === null) { $('#trustStatus').textContent = 'AirDrop helper not installed: use the SlideMate app, or run scripts/build-app.sh'; $('#btnTrust').hidden = true; return; }
-  $('#trustStatus').textContent = trusted ? '✓ Auto-select is on: your iPad gets picked automatically' : 'Auto-select is off: you click your iPad in the AirDrop panel';
+  $('#trustStatus').textContent = trusted ? 'On: your iPad is picked automatically in the AirDrop panel.'
+    : 'Off: you click your iPad in the AirDrop panel. Turning it on needs Accessibility permission.';
   $('#btnTrust').hidden = trusted;
 }
 let draft = {};
@@ -804,35 +805,38 @@ function renderRoots() {
   $('#rootList').innerHTML = (draft.library_roots || []).map((r, i) => `<div class="root"><span title="${esc(r)}">${esc(r)}</span><button type="button" data-rm="${i}" title="Remove">✕</button></div>`).join('')
     || '<div class="hint">No folder chosen yet.</div>';
 }
-$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); } });
+$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); saveSettings(); } });
 async function pickFolder() {
   const native = window.webkit?.messageHandlers?.slidemate;
   if (native) return new Promise((done) => { window.__slidemateFolder = done; native.postMessage({ action: 'pickFolder' }); });
   return (await post('/api/pick-folder')).path;  // browser / dev mode: AppleScript dialog
 }
-function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); } }
+function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); saveSettings(); } }
 $('#btnAddRoot').onclick = async () => addRoot(await pickFolder());
 $('#btnStarter').onclick = async () => { addRoot((await post('/api/starter-folder')).path); toast('Created Documents/SlideMate: add a folder per course, or drop PDFs into it'); };
 function renderProviders() {
   const ps = sysStatus?.providers || {};
   const card = (id, name, sub) => {
     const s = ps[id] || {};
-    const state = !s.installed ? `<span class="st bad">Not installed</span><br><code>${esc(s.install || '')}</code>`
-      : !s.logged_in ? `<span class="st bad">Installed, not signed in</span><div class="acts"><button type="button" class="small" data-login="${id}">Sign in…</button></div>`
-      : `<span class="st ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
+    const state = !s.installed ? `<span class="pill-status bad">Not installed</span><code class="cmd">${esc(s.install || '')}</code>`
+      : !s.logged_in ? `<span class="pill-status bad">Not signed in</span><div class="acts"><button type="button" class="small" data-login="${id}">Sign in…</button></div>`
+      : `<span class="pill-status ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
     return `<label class="pcard ${draft.provider === id ? 'on' : ''}"><input type="radio" name="prov" value="${id}" ${draft.provider === id ? 'checked' : ''}>
-      <div class="body"><b>${name}</b><div class="st">${sub}</div>${state}</div></label>`;
+      <div class="body"><b>${name}</b><div class="st">${sub}</div></div>${state}</label>`;
   };
-  $('#providerCards').innerHTML = card('claude', 'Claude', 'Claude Code · sign in with your Claude account (Pro/Max). Reads slides natively.')
-    + card('codex', 'ChatGPT', 'Codex CLI · sign in with your ChatGPT account.')
-    + `<button type="button" class="small ghost" id="btnRecheck">Re-check</button>`;
+  $('#providerCards').innerHTML = card('claude', 'Claude', 'Claude Code · your Claude Pro/Max account. Reads slides natively.')
+    + card('codex', 'ChatGPT', 'Codex CLI · your ChatGPT account.')
+    + `<button type="button" class="small ghost" id="btnRecheck">Re-check sign-in</button>`;
   const pdfHint = draft.provider === 'codex' && sysStatus && !sysStatus.pdftools
-    ? '<div class="hint">ChatGPT reads slides as text, which needs poppler: <code>brew install poppler</code></div>' : '';
+    ? '<div class="set-label" style="grid-column:1/-1"><span>ChatGPT reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>' : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
+  const sel = (id, opts, cur) => `<select id="${id}" class="set-input">${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const claudeModels = [['sonnet', 'Sonnet 5.5 · fast'], ['opus', 'Opus 5.5 · deepest'], ['fable', 'Fable 5.1 · most powerful'], ['haiku', 'Haiku 4.5 · fastest']];
   $('#modelRow').innerHTML = draft.provider === 'codex'
-    ? `<label>Model <span class="muted">(blank = Codex default)</span><input id="setCodexModel" value="${esc(draft.codex_model || '')}" placeholder="default"></label>`
-    : `<label>Tutor model<select id="setClaudeModel">${['sonnet', 'opus', 'haiku'].map((m) => `<option ${draft.claude_model === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-       <label>Lecture-notes model<select id="setClaudeNotes">${['opus', 'sonnet', 'haiku'].map((m) => `<option ${draft.claude_notes_model === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>`;
+    ? `<label class="set-row"><div class="set-label"><b>Model</b><span>Leave blank to use your Codex default. You can also switch from the chat box.</span></div>
+         <input id="setCodexModel" class="set-input" value="${esc(draft.codex_model || '')}" placeholder="Codex default"></label>`
+    : `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
+       <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, draft.claude_notes_model)}</label>`;
 }
 $('#providerCards').addEventListener('change', (e) => { if (e.target.name === 'prov') { readModelFields(); draft.provider = e.target.value; renderProviders(); } });
 $('#providerCards').addEventListener('click', async (e) => {
@@ -845,11 +849,22 @@ function readModelFields() {
   if ($('#setClaudeModel')) { draft.claude_model = $('#setClaudeModel').value; draft.claude_notes_model = $('#setClaudeNotes').value; }
 }
 async function loadStatus() { sysStatus = await (await api('/api/status')).json(); }
-async function openSettings(firstRun = false) {
+const PANE_TITLES = { general: 'Library', ai: 'AI tutor', ipad: 'Send to iPad', recording: 'Lecture recording', connections: 'Connections & sync', storage: 'Storage' };
+function showPane(name) {
+  if (!PANE_TITLES[name]) name = 'general';
+  document.querySelectorAll('#settings .pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
+  document.querySelectorAll('.set-nav button').forEach((b) => b.classList.toggle('on', b.dataset.pane === name));
+  $('#paneTitle').textContent = PANE_TITLES[name];
+  store.set('settingsPane', name);
+}
+document.querySelector('.set-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+async function openSettings(firstRun = false, pane) {
   draft = JSON.parse(JSON.stringify(cfg));
   document.body.classList.toggle('first-run', firstRun);
   $('#welcome').hidden = !firstRun;
-  $('#btnSettingsSave').textContent = firstRun ? 'Get started' : 'Save';
+  $('#setFoot').hidden = !firstRun;
+  $('#savedHint').textContent = '';
+  showPane(pane || store.get('settingsPane', 'general'));
   renderRoots();
   $('#setIpad').value = cfg.ipad_name || '';
   $('#setAirdrop').checked = cfg.airdrop;
@@ -861,18 +876,21 @@ async function openSettings(firstRun = false) {
   renderMcp();
   renderSyncMode();
   $('#setMd').checked = cfg.write_markdown;
-  $('#providerCards').innerHTML = '<div class="hint">Checking which AI apps are installed…</div>';
-  $('#settings').showModal();
+  $('#providerCards').innerHTML = '<div class="set-label"><span>Checking which AI apps are installed…</span></div>';
+  if (!$('#settings').open) $('#settings').showModal();
   await loadStatus();
   renderProviders();
-  const r = sysStatus.recording;
-  $('#recStatus').innerHTML = r.ffmpeg && r.parakeet ? '✓ Ready (Parakeet speech-to-text, runs on this Mac).'
-    : `Recording needs ffmpeg and Parakeet: <code>${esc(r.install)}</code>. Importing a transcript works without them.`;
+  const r = sysStatus.recording, ready = r.ffmpeg && r.parakeet;
+  $('#recStatus').innerHTML = ready ? 'Parakeet runs on this Mac, so audio never leaves your computer.'
+    : `Needs ffmpeg and Parakeet: <code>${esc(r.install)}</code>. Importing a transcript works without them.`;
+  $('#recBadge').textContent = ready ? '✓ Ready' : 'Not installed';
+  $('#recBadge').className = 'pill-status ' + (ready ? 'ok' : 'bad');
   const p = lib.paths || {};
-  const rows = [['Your slides', (p.roots || []).join(', ')], ['Inbox: drop PDFs here to have them filed', p.inbox],
-    ['SlideMate data (settings, chats, lecture notes, recordings)', p.data], ['Screenshots sent to iPad', p.snaps]];
-  $('#storage').innerHTML = rows.filter(([, path]) => path).map(([label, path]) => `<div class="store"><b>${esc(label)}</b><code>${esc(path)}</code>
-    <button type="button" class="small" data-reveal="${esc(path.split(', ')[0])}">Show</button></div>`).join('');
+  const rows = [['Your slides', (p.roots || []).join(', ')], ['Inbox', p.inbox, 'Drop PDFs here and they get filed into the right course.'],
+    ['SlideMate data', p.data, 'Settings, chats, lecture notes and recordings.'], ['Screenshots sent to iPad', p.snaps]];
+  $('#storage').innerHTML = rows.filter(([, path]) => path).map(([label, path, desc]) => `<div class="store"><div class="t"><b>${esc(label)}</b>
+    ${desc ? `<span class="muted small">${esc(desc)}</span>` : ''}<code title="${esc(path)}">${esc(path)}</code></div>
+    <button type="button" class="small" data-reveal="${esc(path.split(', ')[0])}">Show in Finder</button></div>`).join('');
   refreshTrust();
 }
 // ---------- MCP connections ----------
@@ -1061,28 +1079,52 @@ $('#btnTrust').onclick = async () => {
   toast('In System Settings → Privacy & Security → Accessibility, turn on "SlideMate AirDrop".', false, 9000);
   setTimeout(refreshTrust, 8000);
 };
-$('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
-$('#settings').addEventListener('close', async () => {
-  if ($('#settings').returnValue !== 'ok') return;
+function settingsPayload() {
   readModelFields();
-  const firstRun = document.body.classList.contains('first-run');
-  if (firstRun && !draft.library_roots.length) { toast('Choose your slides folder first', true); return openSettings(true); }
-  cfg = await post('/api/config', {
+  const mode = $('#setSyncMode').value;
+  return {
     library_roots: draft.library_roots, provider: draft.provider, claude_model: draft.claude_model,
     claude_notes_model: draft.claude_notes_model, codex_model: draft.codex_model,
     ipad_name: $('#setIpad').value.trim(), airdrop: $('#setAirdrop').checked, copy_to_clipboard: $('#setClip').checked,
-    sync_command: $('#setSyncMode').value === 'command' ? $('#setSync').value.trim() : '',
-    sync_login_command: $('#setSyncMode').value === 'command' ? $('#setSyncLogin').value.trim() : '',
-    sync_mcp: $('#setSyncMode').value === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
+    sync_command: mode === 'command' ? $('#setSync').value.trim() : '',
+    sync_login_command: mode === 'command' ? $('#setSyncLogin').value.trim() : '',
+    sync_mcp: mode === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
     write_markdown: $('#setMd').checked,
-    setup_done: true,
-  });
+  };
+}
+// Changes apply as you make them (no Save button), like Cursor.
+let saveT;
+async function saveSettings(now = false) {
+  if (document.body.classList.contains('first-run')) return;  // first run saves on "Get started"
+  clearTimeout(saveT);
+  const go = async () => {
+    const before = cfg;
+    cfg = await post('/api/config', settingsPayload());
+    $('#savedHint').textContent = 'Saved'; $('#savedHint').style.opacity = 1;
+    setTimeout(() => { $('#savedHint').style.opacity = 0; }, 1200);
+    if (before.provider !== cfg.provider || before.claude_model !== cfg.claude_model || before.codex_model !== cfg.codex_model) loadModels();
+    if (JSON.stringify(before.library_roots) !== JSON.stringify(cfg.library_roots)) loadLibrary();
+    if (before.sync_mcp?.tool !== cfg.sync_mcp?.tool || before.sync_command !== cfg.sync_command) loadLibrary();
+  };
+  if (now) return go();
+  saveT = setTimeout(go, 400);
+}
+$('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp')) saveSettings(); });
+$('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel')) saveSettings(); });
+$('#btnSettingsClose').onclick = () => $('#settings').close();
+$('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
+$('#settings').addEventListener('close', () => { if (!document.body.classList.contains('first-run')) saveSettings(true); });
+$('#btnSettingsSave').onclick = async () => {  // first run: "Get started"
+  const payload = settingsPayload();
+  if (!payload.library_roots.length) { showPane('general'); return toast('Choose your slides folder first', true); }
+  cfg = await post('/api/config', { ...payload, setup_done: true });
   document.body.classList.remove('first-run');
-  toast(firstRun ? 'All set. Your courses are being organised.' : 'Settings saved');
+  $('#settings').close();
+  toast('All set. Your courses are being organised.');
   loadModels();
   loadLibrary();
   if (state.pdf) setCurrent(state.current);
-});
+};
 
 // ---------- resizable panels ----------
 const PANEL = {
@@ -1245,9 +1287,9 @@ function togglePause() {
   $('#btnRecPause').title = rec.paused ? 'Resume' : 'Pause';
 }
 
-async function stopRecording() {
+async function stopRecording(askFirst = true) {
   if (!rec) return;
-  if (!confirm('Stop recording and write your lecture notes?')) return;
+  if (askFirst && !confirm('Stop recording and write your lecture notes?')) return;
   const r = rec;
   clearInterval(r.timer);
   await new Promise((ok) => { r.recorder.onstop = ok; r.recorder.stop(); });
@@ -1263,7 +1305,10 @@ async function stopRecording() {
   loadLectures(r.deck, r.id);
 }
 $('#btnRec').onclick = startRecording;
-$('#btnRecStop').onclick = stopRecording;
+$('#btnRecStop').onclick = () => stopRecording(true);
+// Used by the Mac app before quitting / closing the window (see macos/SlideMate/main.swift).
+window.__slidemateRecording = () => (rec ? { recording: true, seconds: Math.round(audioTime()), deck: state.name } : { recording: false });
+window.__slidemateStopRecording = async () => { await stopRecording(false); return true; };
 $('#btnRecPause').onclick = togglePause;
 window.addEventListener('beforeunload', (e) => { if (rec) { e.preventDefault(); e.returnValue = ''; } });
 
