@@ -12,8 +12,8 @@ HELPER="$BUILD/SlideMateAirDrop.app"
 VERSION=$(cat VERSION 2>/dev/null || echo "0.1.0")
 
 command -v swiftc >/dev/null || { echo "swiftc not found. Install the Xcode Command Line Tools: xcode-select --install"; exit 1; }
-rm -rf "$APP" "$HELPER"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Helpers" "$HELPER/Contents/MacOS"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Helpers"
 
 # Universal binaries: one app runs on both Apple Silicon and Intel Macs.
 universal() {  # universal <source.swift> <output>
@@ -28,10 +28,18 @@ universal() {  # universal <source.swift> <output>
 }
 echo "• Compiling SlideMate…"
 universal macos/SlideMate/main.swift "$APP/Contents/MacOS/SlideMate"
-echo "• Compiling AirDrop helper…"
-universal macos/AirDrop/airdrop.swift "$HELPER/Contents/MacOS/SlideMateAirDrop"
-
-cat > "$HELPER/Contents/Info.plist" <<PLIST
+# The AirDrop helper needs macOS Accessibility permission, which is tied to its exact code signature.
+# Rebuilding it would silently revoke that permission, so build it once per source version and reuse the
+# identical signed copy on every later build.
+HELPER_KEY=$( (cat macos/AirDrop/airdrop.swift; echo "helper-plist-v1") | shasum -a 256 | cut -c1-16)
+HELPER_CACHE="${SLIDEMATE_HELPER_CACHE:-$HOME/Library/Caches/SlideMate}/helper-$HELPER_KEY/SlideMateAirDrop.app"
+if [ -d "$HELPER_CACHE" ] && codesign --verify "$HELPER_CACHE" 2>/dev/null; then
+  echo "• AirDrop helper unchanged (keeps its Accessibility permission)"
+else
+  echo "• Compiling AirDrop helper…"
+  rm -rf "$HELPER_CACHE"; mkdir -p "$HELPER_CACHE/Contents/MacOS"
+  universal macos/AirDrop/airdrop.swift "$HELPER_CACHE/Contents/MacOS/SlideMateAirDrop"
+  cat > "$HELPER_CACHE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -39,10 +47,13 @@ cat > "$HELPER/Contents/Info.plist" <<PLIST
 <key>CFBundleName</key><string>SlideMate AirDrop</string>
 <key>CFBundleExecutable</key><string>SlideMateAirDrop</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>$VERSION</string>
+<key>CFBundleVersion</key><string>1</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST
+  codesign -s - --force -i app.slidemate.airdrop "$HELPER_CACHE" >/dev/null 2>&1
+fi
+rm -rf "$HELPER"; ditto "$HELPER_CACHE" "$HELPER"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -71,7 +82,7 @@ PLIST
 
 echo "• Bundling server…"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' server "$APP/Contents/Resources/"
-cp -R "$HELPER" "$APP/Contents/Resources/Helpers/"
+ditto "$HELPER_CACHE" "$APP/Contents/Resources/Helpers/SlideMateAirDrop.app"
 
 echo "• Icon…"
 TMP=$(mktemp -d)
@@ -87,8 +98,7 @@ fi
 rm -rf "$TMP"
 
 echo "• Signing (ad-hoc)…"
-codesign -s - --force --deep "$APP" >/dev/null 2>&1
-codesign -s - --force "$HELPER" >/dev/null 2>&1
+codesign -s - --force "$APP" >/dev/null 2>&1   # not --deep: the helper keeps its own (stable) signature
 echo "✓ Built $APP"
 
 if [ "${1:-}" = "--zip" ]; then
