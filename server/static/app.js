@@ -368,7 +368,7 @@ function onIntersect(entries) {
     const dist = Math.abs((r.top + r.bottom) / 2 - focus);
     if (seen > best + 2 || (Math.abs(seen - best) <= 2 && dist < bestDist)) { best = Math.max(seen, best); bestDist = dist; cur = n; }
   }
-  if (best > 0) setCurrent(cur);
+  if (best > 0 && performance.now() > (state.pinUntil || 0)) setCurrent(cur);
 }
 viewer.addEventListener('scroll', () => requestAnimationFrame(() => onIntersect([])), { passive: true });
 
@@ -418,6 +418,7 @@ function goTo(n, smooth = true) {
   n = Math.max(1, Math.min(state.pdf.numPages, n));
   const d = state.pages[n - 1].div;  // scroll the viewer itself (scrollIntoView can also shift the window)
   viewer.scrollTo({ top: d.offsetTop - (viewer.clientHeight - d.offsetHeight) / 2, behavior: smooth ? 'smooth' : 'instant' });
+  state.pinUntil = performance.now() + (smooth ? 900 : 150);  // a jump wins over scroll tracking (e.g. slide 2 can't be centred)
   setCurrent(n);
 }
 
@@ -583,10 +584,109 @@ function mdRender(text) {
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => stash(m, true))
     .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => stash(m, false))
     .replace(/(^|[^\\$\w])\$([^\s$](?:[^$\n]*?[^\s$])?)\$(?![\w$])/g, (_, pre, m) => pre + stash(m, false));
-  return marked.parse(t, { gfm: true }).replace(/@@M(\d+)@@/g, (_, i) => {
+  return linkSlides(marked.parse(t, { gfm: true }).replace(/@@M(\d+)@@/g, (_, i) => {
     const { tex, display } = math[+i];
     try { return katex.renderToString(tex, { displayMode: display, throwOnError: false }); } catch { return esc(tex); }
+  }));
+}
+
+// "slide 26" / "slides 24–28" / "slides 7 and 9" in answers and notes → links (hover to preview, click to go).
+const SLIDE_RE = /\b(slides?)(\s+)(\d{1,3}(?:\s*(?:,|–|—|-|to|and|&|or)\s*\d{1,3})*)/gi;
+function linkSlides(html) {
+  const max = state.pdf?.numPages || 0;
+  if (!max || !/slide/i.test(html)) return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement?.closest('code, pre, a, .katex') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const link = (n, label) => { const el = document.createElement('a'); el.className = 'slide-ref'; el.dataset.slide = n; el.textContent = label; return el; };
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    SLIDE_RE.lastIndex = 0;
+    if (!SLIDE_RE.test(text)) continue;
+    SLIDE_RE.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0, m;
+    while ((m = SLIDE_RE.exec(text))) {
+      frag.append(text.slice(last, m.index));
+      const nums = m[3];
+      if (/^\d+$/.test(nums)) {  // single slide: link the whole "slide 26"
+        frag.append(+nums >= 1 && +nums <= max ? link(nums, m[1] + m[2] + nums) : m[0]);
+      } else {                     // a list or range: link each number
+        frag.append(m[1] + m[2]);
+        nums.split(/(\d{1,3})/).forEach((part) => frag.append(/^\d+$/.test(part) && +part >= 1 && +part <= max ? link(part, part) : part));
+      }
+      last = m.index + m[0].length;
+    }
+    frag.append(text.slice(last));
+    node.replaceWith(frag);
+  }
+  return tpl.innerHTML;
+}
+
+// Hover preview of a referenced slide.
+const peek = { el: null, t: 0, cache: new Map(), cur: null };
+function peekEl() {
+  if (!peek.el) {
+    peek.el = document.createElement('div');
+    peek.el.id = 'slidePeek';
+    peek.el.hidden = true;
+    peek.el.innerHTML = '<img alt=""><div class="cap"></div>';
+    document.body.append(peek.el);
+  }
+  return peek.el;
+}
+async function showPeek(a) {
+  const n = +a.dataset.slide, el = peekEl(), key = state.path + '#' + n;
+  peek.cur = a;
+  el.querySelector('.cap').textContent = `Slide ${n}${n === state.current ? ' (you are here)' : ''} · click to open`;
+  if (!peek.cache.has(key)) peek.cache.set(key, renderImage(n, { width: 520, type: 'image/jpeg', quality: 0.82 }));
+  const src = await peek.cache.get(key);
+  if (peek.cur !== a) return;
+  el.querySelector('img').src = src;
+  el.hidden = false;
+  const r = a.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8)) + 'px';
+  el.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8) + 'px';
+}
+function hidePeek() { peek.cur = null; clearTimeout(peek.t); if (peek.el) peek.el.hidden = true; }
+document.addEventListener('mouseover', (e) => {
+  const a = e.target.closest?.('.slide-ref');
+  if (!a || a === peek.cur) return;
+  clearTimeout(peek.t);
+  peek.t = setTimeout(() => showPeek(a), 120);
+});
+document.addEventListener('mouseout', (e) => { if (e.target.closest?.('.slide-ref') && !e.relatedTarget?.closest?.('.slide-ref')) hidePeek(); });
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('.slide-ref');
+  if (!a) return;
+  e.preventDefault();
+  hidePeek();
+  goTo(+a.dataset.slide);
+});
+
+// Copying from chat / notes: maths comes out once, as LaTeX ($\hat y$), not duplicated by KaTeX's hidden MathML.
+function copyCleanMath(e) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const frag = sel.getRangeAt(0).cloneContents();
+  if (!frag.querySelector('.katex, .katex-mathml, .katex-html')) return;
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:-99999px;top:0;white-space:pre-wrap';
+  box.append(frag);
+  box.querySelectorAll('.katex-display, .katex').forEach((k) => {
+    if (!k.isConnected && !box.contains(k)) return;
+    const tex = k.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
+    if (tex) k.replaceWith(k.classList.contains('katex-display') ? `$$${tex}$$` : `$${tex}$`);
+  });
+  box.querySelectorAll('.katex-mathml').forEach((x) => x.remove());
+  document.body.append(box);
+  e.clipboardData.setData('text/plain', box.innerText.trim());
+  box.remove();
+  e.preventDefault();
 }
 
 async function loadChat(path) {
@@ -644,6 +744,8 @@ function msgEl(m) {
   return d;
 }
 $('#messages').addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) goTo(+g.dataset.goto); });
+$('#messages').addEventListener('copy', copyCleanMath);
+$('#notesPane').addEventListener('copy', copyCleanMath);
 
 async function ask(question) {
   if (!state.pdf || !question.trim()) return;

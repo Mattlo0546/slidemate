@@ -446,3 +446,10 @@ body.first-run .set-head { padding-bottom: 0; }
 @media (max-width: 700px) { .set-nav { width: 64px; } .set-nav button { font-size: 0; justify-content: center; } .set-nav-title { display: none; } .pcards { grid-template-columns: 1fr; } }
 #settings .pcard code.cmd { font: 11px ui-monospace, Menlo, monospace; color: var(--text-2); background: var(--hover); padding: 4px 6px; border-radius: 6px; user-select: all; }
 #welcome.set-welcome { text-align: left; } #welcome.set-welcome .logo.big { margin: 0; flex: none; }
+
+/* ---------- slide links + hover preview ---------- */
+a.slide-ref { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 2px; cursor: pointer; border-radius: 3px; }
+a.slide-ref:hover { background: var(--hover); text-decoration-color: currentColor; }
+#slidePeek { position: fixed; z-index: 80; width: 260px; background: var(--raise); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; pointer-events: none; }
+#slidePeek img { display: block; width: 100%; border-radius: 6px; background: #fff; }
+#slidePeek .cap { font-size: 11.5px; color: var(--muted); padding: 5px 2px 1px; }
