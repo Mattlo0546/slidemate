@@ -751,7 +751,16 @@ $('#askForm').addEventListener('submit', (e) => {
   autosize();
   ask(v);
 });
-const autosize = () => { const t = $('#askInput'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+// Grow the box with its text; only show a scrollbar once it hits the max height. (With ⌘+ text zoom,
+// WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar.)
+const ASK_MAX = 180;
+const autosize = () => {
+  const t = $('#askInput');
+  t.style.height = 'auto';
+  const h = t.scrollHeight;
+  t.style.height = Math.min(h + 2, ASK_MAX) + 'px';
+  t.style.overflowY = h > ASK_MAX ? 'auto' : 'hidden';
+};
 $('#askInput').addEventListener('input', autosize);
 $('#askInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#askForm').requestSubmit(); }
@@ -1113,6 +1122,7 @@ let uiZoom = store.get('uiZoom', 1);
 function setUiZoom(z, announce = true) {
   uiZoom = Math.round(Math.max(0.8, Math.min(1.6, z)) * 10) / 10;
   document.documentElement.style.setProperty('--ui-zoom', uiZoom);
+  if (typeof autosize === 'function') requestAnimationFrame(autosize);
   store.set('uiZoom', uiZoom);
   if (announce) toast(`Text size ${Math.round(uiZoom * 100)}%`, false, 1200);
 }

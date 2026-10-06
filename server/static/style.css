@@ -181,7 +181,7 @@ body.chat-hidden #chat { display: none; }
 #chips button { font-size: 12px; padding: 3px 10px; background: transparent; color: var(--text-2); }
 #askForm { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--border-strong); border-radius: 22px; padding: 6px 6px 6px 14px; background: var(--raise); box-shadow: 0 1px 6px rgba(0,0,0,.04); }
 #askForm:focus-within { border-color: var(--ring); }
-#askInput { flex: 1; resize: none; border: 0; outline: none; background: none; padding: 5px 0; max-height: 180px; line-height: 1.45; }
+#askInput { flex: 1; resize: none; border: 0; outline: none; background: none; padding: 5px 0; max-height: 180px; line-height: 1.45; overflow-y: hidden; box-sizing: content-box; min-height: 1.45em; }
 #askForm .send { width: 30px; height: 30px; padding: 0; justify-content: center; background: var(--primary); color: var(--primary-ink); border: 0; }
 #askForm .send:hover { opacity: .85; }
 #chatCtx { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
