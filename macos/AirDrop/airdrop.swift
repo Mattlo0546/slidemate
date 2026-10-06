@@ -123,13 +123,17 @@ Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
     if sawWindow && !visible { exit(0) }            // panel closed (sent or cancelled)
     if ticks > 240 { report(["state": "timeout"]); exit(4) }  // 60s
     guard let dev = device.map(norm), !dev.isEmpty, trusted, sawWindow, ticks % 2 == 0 else { return }
+    // Also accept the name without a "(2)"-style suffix, which macOS adds when two devices share a name.
+    let base = dev.replacingOccurrences(of: #"\s*\(\d+\)$"#, with: "", options: .regularExpression)
+    let wanted = base == dev ? [dev] : [dev, base]
     var names: [String] = []
     var hit: AXUIElement? = nil
     for (proc, root) in panelRoots() {
         _ = walk(root, 0) { e in
             let l = label(e)
             if !l.isEmpty { names.append("\(proc): \(l)") }
-            if norm(l).contains(dev) { hit = e; return true }
+            let nl = norm(l)
+            if wanted.contains(where: { nl.contains($0) }) { hit = e; return true }
             return false
         }
         if hit != nil { break }
