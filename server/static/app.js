@@ -303,6 +303,7 @@ async function openPdf(path, page) {
     const doc = await pdfjsLib.getDocument({ url: '/api/pdf?path=' + encodeURIComponent(path), httpHeaders: H }).promise;
     if (state.pdf) state.pdf.destroy();
     state.pdf = doc; state.path = path;
+    find.reset(); $('#findBar').hidden = true;
     const item = lib.items.find((i) => i.path === path);
     state.name = item?.title || path.split('/').pop().replace(/\.pdf$/i, '');
     document.body.classList.add('has-doc');
@@ -395,14 +396,28 @@ async function renderPage(n) {
   c.width = Math.floor(vp.width * dpr); c.height = Math.floor(vp.height * dpr);
   p.div.style.width = vp.width + 'px'; p.div.style.height = vp.height + 'px';
   await page.render({ canvasContext: c.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+  if (p.rendered !== state.scale) return;  // zoom changed while rendering
   p.div.querySelector('canvas')?.remove();
   p.div.prepend(c);
+  // Invisible, selectable text over the slide image (what makes text highlightable, copyable and findable).
+  p.div.style.setProperty('--scale-factor', vp.scale);
+  const tl = document.createElement('div');
+  tl.className = 'textLayer';
+  const layer = new pdfjsLib.TextLayer({ textContentSource: await page.getTextContent(), container: tl, viewport: vp });
+  await layer.render();
+  if (p.rendered !== state.scale) return;
+  p.div.querySelector('.textLayer')?.remove();
+  p.div.append(tl);
+  p.textDivs = layer.textDivs;
+  p.itemsStr = layer.textContentItemsStr;
+  find.paintPage(n);
 }
 
 function goTo(n, smooth = true) {
   if (!state.pdf) return;
   n = Math.max(1, Math.min(state.pdf.numPages, n));
-  state.pages[n - 1].div.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'center' });
+  const d = state.pages[n - 1].div;  // scroll the viewer itself (scrollIntoView can also shift the window)
+  viewer.scrollTo({ top: d.offsetTop - (viewer.clientHeight - d.offsetHeight) / 2, behavior: smooth ? 'smooth' : 'instant' });
   setCurrent(n);
 }
 
@@ -524,13 +539,16 @@ snipMenu.addEventListener('click', async (e) => {
 
 // ---------- slide context menu ----------
 const ctx = $('#ctxMenu');
-let ctxPage = null;
+let ctxPage = null, ctxSelection = '';
 viewer.addEventListener('contextmenu', (e) => {
   const el = e.target.closest('.page');
   if (!el) return;
   e.preventDefault();
   ctxPage = +el.dataset.page;
   setCurrent(ctxPage);
+  ctxSelection = String(window.getSelection() || '').trim().slice(0, 600);
+  ctx.querySelector('[data-act="asksel"]').hidden = !ctxSelection;
+  ctx.querySelector('[data-act="copysel"]').hidden = !ctxSelection;
   ctx.hidden = false;
   ctx.style.left = Math.min(e.clientX, innerWidth - 240) + 'px';
   ctx.style.top = Math.min(e.clientY, innerHeight - ctx.offsetHeight - 8) + 'px';
@@ -542,6 +560,8 @@ ctx.addEventListener('click', async (e) => {
   if (!act) return;
   hideMenus();
   if (act === 'explain') ask('Explain this slide.');
+  if (act === 'asksel') ask(`Explain this part of the slide: "${ctxSelection}"`);
+  if (act === 'copysel') { navigator.clipboard.writeText(ctxSelection); toast('Copied'); }
   if (act === 'ask') { showChat(); $('#askInput').focus(); }
   if (act === 'send') sendSlide(ctxPage);
   if (act === 'snip') startSnip();
@@ -1105,7 +1125,11 @@ window.addEventListener('keydown', (e) => {
 }, { capture: true });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (state.busy && !snip && ctx.hidden) stopAnswer(); endSnip(); hideMenus(); return; }
+  if (e.key === 'Escape') {
+    if (!$('#findBar').hidden) { closeFind(); return; }
+    if (state.busy && !snip && ctx.hidden) stopAnswer();
+    endSnip(); hideMenus(); return;
+  }
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || $('#settings').open || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
@@ -1407,6 +1431,123 @@ notesMenu.addEventListener('click', (e) => {
 });
 window.addEventListener('mousedown', (e) => { if (!e.target.closest('#notesMenu') && !e.target.closest('#btnNotesMenu')) notesMenu.hidden = true; });
 setPanelTab(panelTab);
+
+// =====================================================================================
+// Find in slides (⌘F / Ctrl+F)
+// =====================================================================================
+const find = {
+  q: '', matches: [], cur: -1, pageText: {}, token: 0,
+  async pageItems(n) {  // text items of a page, cached (same order as the text layer's spans)
+    if (!this.pageText[n]) {
+      const tc = await (await state.pdf.getPage(n)).getTextContent();
+      this.pageText[n] = tc.items.filter((it) => 'str' in it).map((it) => it.str);
+    }
+    return this.pageText[n];
+  },
+  reset() { this.matches = []; this.cur = -1; this.pageText = {}; },
+  async search(q) {
+    this.q = q.trim().toLowerCase();
+    const token = ++this.token;
+    this.matches = []; this.cur = -1;
+    this.clearAll();
+    if (!this.q || !state.pdf) return this.updateCount();
+    for (let n = 1; n <= state.pdf.numPages; n++) {
+      const items = await this.pageItems(n);
+      if (token !== this.token) return;  // a newer search started
+      const full = items.join('').toLowerCase();
+      let i = full.indexOf(this.q);
+      while (i >= 0) { this.matches.push({ page: n, start: i, end: i + this.q.length }); i = full.indexOf(this.q, i + 1); }
+      if (n % 10 === 0) this.updateCount(true);
+    }
+    // Start from the first match at or after the slide you're on.
+    const from = this.matches.findIndex((m) => m.page >= state.current);
+    this.cur = this.matches.length ? (from >= 0 ? from : 0) : -1;
+    this.updateCount();
+    state.pages.forEach((p, i) => this.paintPage(i + 1));
+    this.reveal();
+  },
+  step(d) {
+    if (!this.matches.length) return;
+    const prevPage = this.matches[this.cur]?.page;
+    this.cur = (this.cur + d + this.matches.length) % this.matches.length;
+    this.updateCount();
+    if (prevPage) this.paintPage(prevPage);
+    this.paintPage(this.matches[this.cur].page);
+    this.reveal();
+  },
+  reveal() {
+    const m = this.matches[this.cur];
+    if (!m) return;
+    if (m.page !== state.current) goTo(m.page, false);
+    requestAnimationFrame(() => {  // centre the match inside the slide viewer only (never scroll the window)
+      const mk = document.querySelector(`.page[data-page="${m.page}"] mark.current`);
+      if (!mk) return;
+      const vr = viewer.getBoundingClientRect(), r = mk.getBoundingClientRect();
+      if (r.top < vr.top + 60 || r.bottom > vr.bottom - 40) viewer.scrollTop += r.top - vr.top - viewer.clientHeight / 2;
+    });
+  },
+  updateCount(partial = false) {
+    const n = this.matches.length;
+    $('#findCount').textContent = !this.q ? '' : n ? `${this.cur + 1 || 1} of ${n}${partial ? '…' : ''}` : (partial ? 'Searching…' : 'No results');
+    $('#findBar').classList.toggle('none', !!this.q && !n && !partial);
+  },
+  clearPage(p) {
+    p.div?.querySelectorAll('.textLayer mark').forEach((mk) => { const s = mk.parentNode; s.replaceChildren(document.createTextNode(s.textContent)); });
+  },
+  clearAll() { state.pages.forEach((p) => this.clearPage(p)); },
+  // Wrap the matched characters (which can span several text spans) in <mark>.
+  paintPage(n) {
+    const p = state.pages[n - 1];
+    if (!p?.textDivs) return;
+    this.clearPage(p);
+    const ms = this.matches.map((m, idx) => ({ ...m, idx })).filter((m) => m.page === n);
+    if (!ms.length) return;
+    const offs = []; let acc = 0;
+    p.itemsStr.forEach((s) => { offs.push(acc); acc += s.length; });
+    const perDiv = new Map();
+    for (const m of ms) {
+      for (let k = 0; k < p.itemsStr.length; k++) {
+        const a = offs[k], b = a + p.itemsStr[k].length;
+        if (b <= m.start || a >= m.end) continue;
+        (perDiv.get(k) || perDiv.set(k, []).get(k)).push([Math.max(m.start, a) - a, Math.min(m.end, b) - a, m.idx === this.cur]);
+      }
+    }
+    for (const [k, ranges] of perDiv) {
+      const div = p.textDivs[k], text = p.itemsStr[k];
+      if (!div) continue;
+      const frag = document.createDocumentFragment(); let pos = 0;
+      ranges.sort((x, y) => x[0] - y[0]).forEach(([s, e, cur]) => {
+        if (s > pos) frag.append(text.slice(pos, s));
+        const mk = document.createElement('mark'); mk.textContent = text.slice(s, e); if (cur) mk.className = 'current';
+        frag.append(mk); pos = e;
+      });
+      if (pos < text.length) frag.append(text.slice(pos));
+      div.replaceChildren(frag);
+    }
+  },
+};
+function openFind() {
+  if (!state.pdf) return;
+  $('#findBar').hidden = false;
+  const sel = String(window.getSelection() || '').trim();
+  if (sel && sel.length < 80 && !sel.includes('\n')) $('#findInput').value = sel;
+  $('#findInput').focus(); $('#findInput').select();
+  if ($('#findInput').value.trim().toLowerCase() !== find.q) find.search($('#findInput').value);
+}
+function closeFind() { $('#findBar').hidden = true; find.q = ''; find.matches = []; find.clearAll(); $('#findInput').blur(); }
+let findT;
+$('#findInput').addEventListener('input', () => { clearTimeout(findT); findT = setTimeout(() => find.search($('#findInput').value), 180); });
+$('#findInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); find.step(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
+});
+$('#findPrev').onclick = () => find.step(-1);
+$('#findNext').onclick = () => find.step(1);
+$('#findClose').onclick = closeFind;
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && state.pdf) { e.preventDefault(); openFind(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g' && !$('#findBar').hidden) { e.preventDefault(); find.step(e.shiftKey ? -1 : 1); }
+}, { capture: true });
 
 (async () => {
   cfg = await (await api('/api/config')).json();

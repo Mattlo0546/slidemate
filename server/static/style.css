@@ -352,3 +352,25 @@ dialog .line label { flex: 1; margin-bottom: 0; }
 /* ---------- stop button ---------- */
 #askForm .send.stop { background: var(--text); }
 #askForm .send.stop svg { fill: var(--primary-ink); stroke: none; width: 12px; height: 12px; }
+
+/* ---------- selectable text layer (PDF.js) ---------- */
+.textLayer { position: absolute; inset: 0; overflow: clip; opacity: 1; line-height: 1; text-align: initial;
+  -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; z-index: 1; }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.textLayer span.markedContent { top: 0; height: 0; }
+.textLayer ::selection { background: rgba(0, 110, 255, .28); }
+.textLayer br::selection { background: transparent; }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.textLayer.selecting .endOfContent { top: 0; }
+.textLayer mark { color: transparent; background: rgba(255, 214, 10, .45); border-radius: 2px; padding: 0; }
+.textLayer mark.current { background: rgba(255, 140, 0, .6); box-shadow: 0 0 0 2px rgba(255, 140, 0, .6); }
+.page .num { z-index: 2; }
+
+/* ---------- find bar ---------- */
+#findBar { position: absolute; top: 10px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 4px;
+  background: var(--raise); border-radius: 12px; box-shadow: var(--shadow); padding: 4px 4px 4px 10px; }
+#findBar > svg { color: var(--muted); }
+#findBar input { border: 0; outline: none; background: none; width: 200px; padding: 5px 4px; }
+#findCount { font-size: 12px; color: var(--muted); min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+#findBar.none #findCount { color: #e5484d; }
+#findBar button.icon { width: 26px; height: 26px; }

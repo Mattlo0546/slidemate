@@ -97,6 +97,14 @@
         <p>Pick slides from the library, or drop a PDF anywhere. It gets filed into the right course automatically.</p>
         <p class="kbd-row"><kbd>E</kbd> explain <kbd>S</kbd> send to iPad <kbd>X</kbd> snip <kbd>/</kbd> ask</p>
       </div>
+      <div id="findBar" hidden>
+        <svg><use href="#i-search"/></svg>
+        <input id="findInput" placeholder="Find in slides" spellcheck="false" autocomplete="off">
+        <span id="findCount"></span>
+        <button id="findPrev" class="ghost icon" title="Previous (⇧↩)"><svg><use href="#i-left"/></svg></button>
+        <button id="findNext" class="ghost icon" title="Next (↩)"><svg><use href="#i-right"/></svg></button>
+        <button id="findClose" class="ghost icon" title="Close (Esc)"><svg><use href="#i-minus"/></svg></button>
+      </div>
       <div id="snipLayer" hidden><div id="snipRect"></div><div id="snipHint">Drag over an area · Esc to cancel</div></div>
       <div id="snipMenu" class="menu row" hidden>
         <button data-snip="send" class="primary"><svg><use href="#i-send"/></svg>Send to iPad</button>
@@ -153,6 +161,8 @@
 </main>
 
 <div id="ctxMenu" class="menu" hidden>
+  <button data-act="asksel" hidden><svg><use href="#i-sparkle"/></svg>Ask about the selected text</button>
+  <button data-act="copysel" hidden><svg><use href="#i-copy"/></svg>Copy selected text</button>
   <button data-act="explain"><svg><use href="#i-sparkle"/></svg>Explain this slide</button>
   <button data-act="ask"><svg><use href="#i-chat"/></svg>Ask about this slide…</button>
   <hr>
