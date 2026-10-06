@@ -410,18 +410,44 @@ def get(lid):
     return {"meta": m, "notes": notes, "live": live[-40:], "has_audio": audio_path(lid).exists(), "audio_type": "audio/mp4" if m.get("audio", "").endswith("mp4") else "audio/webm"}
 
 
-def notes_context(path, limit=40000):
-    """Latest finished lecture notes for a deck, as text for the tutor's context."""
+def _latest_notes(path):
     for m in list_for_deck(path):
-        if m.get("status") != "done":
-            continue
-        notes = lib._load(ldir(m["id"]) / "notes.json", {})
-        parts = [f"Lecture on {m['date']} — summary:\n{notes.get('summary_md', '')}"]
-        for n, s in sorted(notes.get("slides", {}).items(), key=lambda kv: int(kv[0])):
-            quotes = " / ".join(q["text"] for q in s.get("quotes", []))[:1500]
-            parts.append(f"Slide {n} — lecturer's points:\n{s['notes_md']}\nVerbatim: {quotes}")
-        return "\n\n".join(parts)[:limit]
-    return ""
+        if m.get("status") == "done":
+            notes = lib._load(ldir(m["id"]) / "notes.json", None)
+            if notes:
+                return m, notes
+    return None, None
+
+
+def notes_version(path):
+    """Changes whenever the deck gets new/regenerated lecture notes (so open tutor sessions can catch up)."""
+    m, _ = _latest_notes(path)
+    if not m:
+        return ""
+    f = ldir(m["id"]) / "notes.json"
+    return f"{m['id']}:{int(f.stat().st_mtime)}"
+
+
+def notes_context(path, limit=150000):
+    """Latest finished lecture notes for a deck, as text for the tutor's context."""
+    m, notes = _latest_notes(path)
+    if not notes:
+        return ""
+    parts = [f"Lecture on {m['date']} — summary:\n{notes.get('summary_md', '')}"]
+    for n, s in sorted(notes.get("slides", {}).items(), key=lambda kv: int(kv[0])):
+        quotes = " / ".join(q["text"] for q in s.get("quotes", []))[:1500]
+        parts.append(f"Slide {n} — lecturer's points:\n{s['notes_md']}\nVerbatim: {quotes}")
+    return "\n\n".join(parts)[:limit]
+
+
+def slide_notes(path, page):
+    """What the lecturer said about one slide (notes + verbatim quotes), or ''."""
+    m, notes = _latest_notes(path)
+    s = (notes or {}).get("slides", {}).get(str(page))
+    if not s:
+        return ""
+    quotes = "\n".join(f'- "{q["text"]}"' for q in s.get("quotes", []))[:4000]
+    return f"What the lecturer said about slide {page} (lecture on {m['date']}):\n{s.get('notes_md', '')}" + (f"\n\nVerbatim:\n{quotes}" if quotes else "")
 
 
 def resume_unfinished(stale_after=180):

@@ -392,6 +392,17 @@ class Handler(BaseHTTPRequestHandler):
         question, page = body.get("question", "Explain this slide."), body.get("page", 1)
         user_msg = {"role": "user", "text": body.get("display") or question, "slide": page, "ts": time.time(), "snip": bool(body.get("snip"))}
         answer, gone = [], False
+        # Lecture notes: the whole set goes in when the session starts (or when notes appear/change mid-session),
+        # and what the lecturer said about *this* slide goes with every question.
+        ver = lecture.notes_version(path)
+        started = bool(getattr(sess, "primed", False) or getattr(sess, "thread", None))
+        if started and ver and getattr(sess, "notes_ver", "") != ver:
+            question = ("(New: notes from the actual lecture on this deck are now available — use them from now on.)\n\n"
+                        + lecture.notes_context(path) + "\n\n---\n\n" + question)
+        sess.notes_ver = ver
+        here = lecture.slide_notes(path, page)
+        if here:
+            question = f"{here}\n\n---\n\n{question}"
         for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path)):
             if isinstance(chunk, tuple):  # ("status", "Using blackboard › …") / ("usage", {...}): live only, not saved
                 if chunk[0] == "usage":
