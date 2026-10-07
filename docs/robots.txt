@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /demo/
+
+Sitemap: https://mattlo0546.github.io/slidemate/sitemap.xml

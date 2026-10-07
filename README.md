@@ -14,6 +14,8 @@ Explain any slide in context · Snip it to your iPad in one click · Turn the le
 
 </div>
 
+**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account. 🌐 [Website](https://mattlo0546.github.io/slidemate/)
+
 Lecture PDFs are terse: a few bullets, a diagram, an equation. Pasting slides into a chatbot one at a time
 loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor that has read every slide and
 the lecture itself (if you recorded it). Ask about the slide you're on, and the answer explains how it connects to the rest of
@@ -176,6 +178,33 @@ Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add 
   `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Sync.
 - **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
   are never sent to the UI.
+
+## FAQ
+
+**How can I get AI to explain my lecture slides?**
+Open the PDF in SlideMate, right-click a slide → *Explain this slide*. The tutor has read every slide in the deck
+(and your lecture notes, if you recorded the lecture), so it explains how that slide fits the rest of the course.
+
+**Why not just paste my slides into ChatGPT?**
+Pasting slides one at a time loses the rest of the lecture, and asking about "page 23" of a long PDF is clumsy.
+SlideMate keeps the whole deck in context, knows which slide you're on, and saves the chat for each slide.
+
+**How do I get a slide from my Mac into GoodNotes or Notability on my iPad?**
+Click **Send to iPad**, or snip part of a slide → *Send to iPad*. It goes by AirDrop (SlideMate can pick your iPad
+for you) and is copied to the clipboard for pasting via Universal Clipboard.
+
+**Can it turn a lecture recording into notes?**
+Yes. Press **Record** in class. It transcribes on-device (NVIDIA Parakeet), tracks which slide was showing, and
+writes a summary plus notes for each slide with the lecturer's exact words. You can also import an Otter or Granola
+transcript.
+
+**Is it free? Is there a NotebookLM alternative for lecture slides?**
+SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Unlike
+general "chat with your sources" tools, it's a slide viewer first: the tutor answers about the slide in front of you,
+with the whole deck as context.
+
+**Windows? iPad app?**
+Not yet. It's macOS 13+ (Apple Silicon and Intel), and sends slides to your iPad.
 
 ## How it works
 
