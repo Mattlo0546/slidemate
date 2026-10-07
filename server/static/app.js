@@ -387,11 +387,12 @@ function setCurrent(n) {
 
 async function renderPage(n) {
   const p = state.pages[n - 1];
-  if (!p || p.rendered === state.scale) return;
+  if (!p || p.rendered === state.scale || pinch.active) return;
   p.rendered = state.scale;
   const page = await state.pdf.getPage(n);
   const vp = page.getViewport({ scale: state.scale });
-  const dpr = window.devicePixelRatio || 1;
+  // Very deep zoom: cap the canvas size (WebKit refuses canvases over ~16M pixels).
+  const dpr = Math.min(window.devicePixelRatio || 1, Math.sqrt(16e6 / (vp.width * vp.height)));
   const c = document.createElement('canvas');
   c.width = Math.floor(vp.width * dpr); c.height = Math.floor(vp.height * dpr);
   p.div.style.width = vp.width + 'px'; p.div.style.height = vp.height + 'px';
@@ -429,6 +430,51 @@ async function setZoom(scale, fit = false) {
   await buildPages();
   goTo(cur, false);
 }
+// Trackpad pinch: zoom live around the cursor (like Photoshop), then re-render sharp when the fingers lift.
+// WebKit (the Mac app) sends gesture* events; Chromium sends ctrl+wheel.
+const ZOOM_MIN = 0.2, ZOOM_MAX = 8;
+const pinch = { active: false, base: 1, t: 0 };
+function zoomAround(scale, cx, cy) {
+  if (!state.pdf || !state.pages.length) return;
+  scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scale));
+  const old = state.scale;
+  if (!old || Math.abs(scale - old) < 1e-4) return;
+  // The point under the cursor: which slide, and where on it.
+  const vr = viewer.getBoundingClientRect();
+  let anchor = null;
+  for (const n of [...visible.keys(), state.current]) {
+    const r = state.pages[n - 1]?.div.getBoundingClientRect();
+    if (r && cy >= r.top - 10 && cy <= r.bottom + 10) { anchor = { n, fx: (cx - r.left) / r.width, fy: (cy - r.top) / r.height }; break; }
+  }
+  anchor ||= { n: state.current, fx: 0.5, fy: 0.5 };
+  // Resize every slide in place; the existing canvases stretch until they're re-rendered (no white flash).
+  const k = scale / old;
+  for (const p of state.pages) {
+    p.div.style.width = parseFloat(p.div.style.width) * k + 'px';
+    p.div.style.height = parseFloat(p.div.style.height) * k + 'px';
+    if (p.div.style.getPropertyValue('--scale-factor')) p.div.style.setProperty('--scale-factor', scale);
+  }
+  state.scale = scale; state.fit = false;
+  const d = state.pages[anchor.n - 1].div;
+  viewer.scrollLeft = d.offsetLeft + anchor.fx * d.offsetWidth - (cx - vr.left);
+  viewer.scrollTop = d.offsetTop + anchor.fy * d.offsetHeight - (cy - vr.top);
+}
+function endPinch() {
+  pinch.active = false;
+  for (const n of visible.keys()) { renderPage(n); renderPage(n + 1); }
+}
+viewer.addEventListener('gesturestart', (e) => { e.preventDefault(); pinch.active = true; pinch.base = state.scale; });
+viewer.addEventListener('gesturechange', (e) => { e.preventDefault(); zoomAround(pinch.base * e.scale, e.clientX, e.clientY); });
+viewer.addEventListener('gestureend', (e) => { e.preventDefault(); endPinch(); });
+viewer.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;  // a pinch (not ⌘+scroll)
+  e.preventDefault();
+  pinch.active = true;
+  zoomAround(state.scale * Math.exp(-e.deltaY / 100), e.clientX, e.clientY);
+  clearTimeout(pinch.t);
+  pinch.t = setTimeout(endPinch, 160);
+}, { passive: false });
+
 $('#btnPrev').onclick = () => goTo(state.current - 1);
 $('#btnNext').onclick = () => goTo(state.current + 1);
 $('#btnZoomIn').onclick = () => setZoom(state.scale * 1.2);
