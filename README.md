@@ -14,7 +14,7 @@ Explain any slide in context · Snip it to your iPad in one click · Turn the le
 
 </div>
 
-**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account. 🌐 [Website](https://mattlo0546.github.io/slidemate/)
+**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account.
 
 Lecture PDFs are terse: a few bullets, a diagram, an equation. Pasting slides into a chatbot one at a time
 loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor that has read every slide and
@@ -83,6 +83,18 @@ a single file. PDFs dropped onto the window get filed into the right course.
   chose.
 
 > The demo above uses an original sample lecture made for SlideMate. Answers are real, generated live by Claude.
+
+## SlideMate vs. pasting slides into a chatbot
+
+| | SlideMate | ChatGPT / Claude chat | NotebookLM-style tools |
+| --- | --- | --- | --- |
+| Knows the whole deck | Yes, every slide | Only what you paste | Yes |
+| Knows which slide you're on | Yes | No | No: you chat with the whole source |
+| Uses what the lecturer said | Yes, from your recording | No | If you upload a transcript |
+| Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
+| Chats saved per slide | Yes | One long chat | One notebook chat |
+| Where it runs | On your Mac (open source) | Web | Web |
+| Cost | Free; uses your existing Claude or ChatGPT plan | Your plan | Varies |
 
 ## Quick start
 

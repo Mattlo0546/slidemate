@@ -24,6 +24,5 @@ Features:
 - Library: sorts course folders by course, type (lectures, labs, readings) and week; Blackboard/Canvas via MCP with a Pull button.
 
 ## Links
-- [Website](https://mattlo0546.github.io/slidemate/)
 - [README](https://github.com/Mattlo0546/slidemate#readme)
 - [Latest release](https://github.com/Mattlo0546/slidemate/releases/latest)
