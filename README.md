@@ -1,36 +1,102 @@
+<div align="center">
+
+<img src="server/static/logo.svg" width="88" alt="SlideMate logo">
+
 # SlideMate
 
-**Study lecture slides with an AI tutor that has read the whole deck.** Ask "explain this slide" and get an answer that
-knows what came before and what comes next. Send any slide (or a snipped part of one) to your iPad in one click.
-Record a lecture and get a skimmable summary plus notes for every slide, with the lecturer's exact words.
+**Study your lecture slides with an AI tutor that has read the whole deck.**
 
-Runs locally on your Mac and uses the AI app you're already signed in to: **Claude** (Claude Code) or **ChatGPT**
-(Codex CLI). No API keys.
+Explain any slide in context · Snip it to your iPad in one click · Turn the lecture into notes for every slide
 
-## Features
+[![Latest release](https://img.shields.io/github/v/release/Mattlo0546/slidemate?label=download&color=5b6cff)](https://github.com/Mattlo0546/slidemate/releases/latest) ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111?logo=apple) ![Claude or ChatGPT](https://img.shields.io/badge/AI-Claude%20%7C%20ChatGPT-8b5cf6) [![MIT license](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
 
-- **Whole-deck tutor**: right-click a slide → *Explain this slide*, or ask anything. The tutor sees the slide you're on
-  plus the entire deck, and links answers to other slides ("this builds on slide 7").
-- **Chats saved per slide**: come back to a slide while revising and your questions and answers are still there.
-  Also saved as Markdown next to your slides.
-- **Send to iPad**: one click AirDrops the slide (or a snipped area) to your iPad, and copies it to the clipboard for
-  pasting into GoodNotes or Notability via Universal Clipboard. Optional auto-select picks your iPad for you.
-- **Lecture notes**: hit *Record* in class. SlideMate transcribes on-device with NVIDIA Parakeet, logs which slide
-  you were viewing, then writes:
-  - a **summary**: what you learned, to-dos, deadlines, exam tips
-  - **notes for each slide**, with verbatim quotes and ▶ buttons that play that moment of the recording
+<img src="docs/media/explain.gif" width="900" alt="Right-click a slide, choose Explain, and the tutor answers with links to other slides">
 
-  You can also import a transcript, e.g. from Granola or Otter.
-- **Organised library**: point SlideMate at your course folders. It sorts files into Lectures, Labs, Readings,
-  Exercises and so on by week, without moving anything. PDFs dropped into the app or the `_Inbox` folder get filed
-  into the right course automatically.
-- **MCP connections**: connect MCP servers, such as your university's Blackboard or Canvas, so the tutor can check
-  deadlines, announcements and materials while it answers. You can import the servers you already use in Claude
-  Desktop, Claude Code or Codex with one click.
-- **Tidy library**: each course and file has a ⋯ menu to rename it (display only), archive it into a collapsed
-  *Archived* section, or move it to the Trash.
-- **Optional sync**: point the *Sync now* button at an MCP tool (e.g. `bb_sync`) or at any shell command that
-  downloads slides.
+</div>
+
+Lecture PDFs are terse: a few bullets, a diagram, an equation. Pasting slides into a chatbot one at a time
+loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor that has read every slide and
+the lecture itself (if you recorded it). Ask about the slide you're on, and the answer explains how it connects to the rest of
+the course.
+
+It runs locally on your Mac and uses the AI you already pay for, either **Claude** (via Claude Code) or **ChatGPT**
+(via Codex). No API keys, no account, no server.
+
+## What it does
+
+### 🧠 A tutor that knows the whole deck
+Right-click → **Explain this slide** (or press <kbd>E</kbd>), or ask anything. Answers draw on the entire deck and on what
+your lecturer actually said. Slide references like "slide 4" are links: hover to preview, click to jump.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 📲 Snip → iPad in one click
+Drag over any part of a slide and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
+copied to your clipboard, ready for GoodNotes or Notability.
+
+</td>
+<td width="50%" valign="top">
+
+### 🎙️ Lecture → notes for every slide
+Hit **Record** in class. SlideMate transcribes on-device with NVIDIA Parakeet, tracks which slide you were on, and writes
+a summary (key ideas, to-dos, deadlines, exam tips) plus **notes for each slide with the lecturer's exact words**.
+
+</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/media/snip.gif" alt="Snip part of a slide and send it to an iPad"></td>
+<td valign="top"><img src="docs/media/notes.gif" alt="Lecture notes for each slide"></td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🔍 Pinch, zoom, search
+Pinch to zoom around the cursor, like Photoshop. <kbd>⌘F</kbd> searches the text of every slide, and you can select
+and copy straight from the PDF.
+
+</td>
+<td width="50%" valign="top">
+
+### 📚 Your courses, sorted
+Point SlideMate at your uni folder. It sorts every PDF by **course → Lectures / Labs / Readings → week**, without moving
+a single file. PDFs dropped onto the window get filed into the right course.
+
+</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/media/zoom.gif" alt="Pinch to zoom and search"></td>
+<td valign="top"><img src="docs/media/library.gif" alt="Library sorted by course, type and week"></td>
+</tr>
+</table>
+
+### And also
+- **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
+  (handy for Obsidian).
+- **MCP connections**: plug in your university's Blackboard or Canvas MCP server, and the tutor can check deadlines and
+  announcements mid-answer. A **Pull** button syncs new slides automatically.
+- **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
+- **Private by design**: everything stays on your Mac. The only thing sent anywhere is your question to the AI provider you
+  chose.
+
+> The demo above uses an original sample lecture made for SlideMate. Answers are real, generated live by Claude.
+
+## Quick start
+
+**Option A: download.** Grab `SlideMate-x.y.z-macOS.zip` from the
+[latest release](https://github.com/Mattlo0546/slidemate/releases/latest) and drag SlideMate into Applications
+(see the [first-launch note](#download)).
+
+**Option B: build it yourself** (it opens without any Gatekeeper prompts):
+
+```bash
+git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
+```
+
+Either way you need **Claude Code** *or* **Codex** signed in. The setup screen checks this and has a Sign in button.
+
+---
 
 ## Download
 

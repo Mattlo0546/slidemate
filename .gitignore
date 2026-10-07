@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .DS_Store
 dist/
+docs/demo/node_modules/
+docs/demo/Uni/
+docs/demo/frames/
+docs/demo/out/
+docs/demo/*.png
+docs/demo/raw-*.mp4
