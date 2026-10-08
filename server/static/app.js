@@ -16,7 +16,7 @@ const state = {
   pdf: null, path: null, name: '', pages: [], current: 1, scale: null, fit: true,
   chats: {},   // path -> [{role, text, slide, ts, snip, image}]
   busy: false,
-  chatMode: store.get('chatMode', 'slide'),
+  chatMode: 'slide',  // 'all' is a temporary view: moving to another slide switches back (see setCurrent)
 };
 
 function toast(msg, err = false, ms = 3500) {
@@ -384,7 +384,12 @@ function setCurrent(n) {
   $('#pageLabel').textContent = `${n} / ${state.pdf.numPages}`;
   $('#chatCtx').textContent = `Slide ${n} of ${state.pdf.numPages} · ${providerLabel()} has the whole deck`;
   store.set('page:' + state.path, n);
-  if (changed && state.chatMode === 'slide' && !state.busy) renderChat();
+  if (changed && !state.busy) {
+    // The chat follows the slide you're on. "All slides" is for browsing: scrolling to another slide brings back
+    // that slide's chat, unless you got there by clicking a slide link inside the chat (then keep reading).
+    if (state.chatMode === 'all' && performance.now() > (state.keepAllUntil || 0)) setChatMode('slide');
+    else if (state.chatMode === 'slide') renderChat();
+  }
   if (changed) onSlideChange(n);
 }
 
@@ -737,6 +742,7 @@ document.addEventListener('click', (e) => {
   if (!a) return;
   e.preventDefault();
   hidePeek();
+  if (a.closest('#messages')) state.keepAllUntil = performance.now() + 1500;
   goTo(+a.dataset.slide);
 });
 
@@ -776,7 +782,6 @@ function markChattedSlides() {
 
 function setChatMode(mode) {
   state.chatMode = mode;
-  store.set('chatMode', mode);
   document.querySelectorAll('#chatMode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
   renderChat();
 }
@@ -815,7 +820,7 @@ function msgEl(m) {
   } else d.innerHTML = mdRender(m.text || '');
   return d;
 }
-$('#messages').addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) goTo(+g.dataset.goto); });
+$('#messages').addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) { state.keepAllUntil = performance.now() + 1500; goTo(+g.dataset.goto); } });
 $('#messages').addEventListener('copy', copyCleanMath);
 $('#notesPane').addEventListener('copy', copyCleanMath);
 
