@@ -1389,9 +1389,17 @@ async function startRecording() {
   const recorder = new MediaRecorder(stream, { mimeType: webm ? 'audio/webm;codecs=opus' : 'audio/mp4', audioBitsPerSecond: 48000 });
   rec = { id, deck: state.path, recorder, stream, seq: -1, queue: [], events: [{ t: 0, slide: state.current, deck: state.path }],
           acc: 0, resumedAt: performance.now(), paused: false, pumping: false };
-  recorder.ondataavailable = (e) => { if (e.data.size) { rec.queue.push({ seq: ++rec.seq, blob: e.data }); pump(); } };
+  recorder.ondataavailable = (e) => { if (e.data.size) { rec.lastData = performance.now(); rec.queue.push({ seq: ++rec.seq, blob: e.data }); pump(); } };
+  // If the microphone goes away (headphones unplugged, device switched), the recorder stops delivering audio
+  // without telling anyone. Notice it, and finish the lecture with what was captured.
+  recorder.onerror = () => micLost();
+  stream.getAudioTracks().forEach((t) => t.addEventListener('ended', () => micLost()));
   recorder.start(15000);
-  rec.timer = setInterval(() => { $('#recTime').textContent = fmtT(audioTime()); }, 500);
+  rec.lastData = performance.now();
+  rec.timer = setInterval(() => {
+    $('#recTime').textContent = fmtT(audioTime());
+    if (!rec.paused && performance.now() - rec.lastData > 45000) micLost();
+  }, 500);
   // Tell the server this page is still recording (even while paused); if it goes quiet, the server finishes it.
   rec.beat = setInterval(() => post('/api/lecture/heartbeat', { id }).catch(() => {}), 20000);
   $('#btnRec').hidden = true; $('#recPill').hidden = false; $('#recPill').classList.remove('paused');
@@ -1432,19 +1440,27 @@ function onSlideChange(n) {
 
 function togglePause() {
   if (!rec) return;
-  if (rec.paused) { rec.recorder.resume(); rec.paused = false; rec.resumedAt = performance.now(); rec.events.push({ t: audioTime(), slide: state.current, deck: state.path }); }
+  if (rec.paused) { rec.recorder.resume(); rec.paused = false; rec.resumedAt = rec.lastData = performance.now(); rec.events.push({ t: audioTime(), slide: state.current, deck: state.path }); }
   else { rec.acc = audioTime(); rec.recorder.pause(); rec.paused = true; }
   $('#recPill').classList.toggle('paused', rec.paused);
   $('#btnRecPause').innerHTML = `<svg><use href="#i-${rec.paused ? 'play' : 'pause'}"/></svg>`;
   $('#btnRecPause').title = rec.paused ? 'Resume' : 'Pause';
 }
 
+function micLost() {
+  if (!rec || rec.lost) return;
+  rec.lost = true;
+  toast('Recording stopped: the microphone went away (headphones disconnected or the input changed). Everything up to now is saved, and your notes are being written.', true, 15000);
+  stopRecording(false);
+}
 async function stopRecording(askFirst = true) {
   if (!rec) return;
   if (askFirst && !confirm('Stop recording and write your lecture notes?')) return;
   const r = rec;
   clearInterval(r.timer);
-  await new Promise((ok) => { r.recorder.onstop = ok; r.recorder.stop(); });
+  if (r.recorder.state !== 'inactive') {  // a recorder that already died can't be stopped (stop() would throw)
+    await new Promise((ok) => { r.recorder.onstop = ok; try { r.recorder.stop(); } catch { ok(); } setTimeout(ok, 5000); });
+  }
   r.stream.getTracks().forEach((t) => t.stop());
   toast('Saving the recording…', false, 2500);
   while (r.queue.length || r.pumping) { await pump(); await new Promise((ok) => setTimeout(ok, 300)); }
