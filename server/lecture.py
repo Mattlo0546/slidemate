@@ -522,6 +522,8 @@ def resume_unfinished(stale_after=180):
     """On startup: finish lectures whose processing was cut off (app quit mid-transcription), and recordings that
     were abandoned (crash/force-quit: no new audio for a few minutes), so nothing is left stuck."""
     for d in LECTURES.iterdir():
+        for tmp in d.glob("tmp-*"):  # scratch audio left behind by a transcription that was cut off
+            shutil.rmtree(tmp, ignore_errors=True)
         m = lib._load(d / "meta.json", None)
         if not m:
             continue
