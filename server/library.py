@@ -56,11 +56,17 @@ def course_dirs():
     return out
 
 
+# Folders that never hold slides but can hold thousands of sub-folders (code projects in a course folder).
+JUNK_DIRS = {"node_modules", "venv", "env", "site-packages", "__pycache__", "build", "dist", "target", "Pods"}
+
+
 def _pdfs(folder):
-    for p in folder.rglob("*.pdf"):
-        if any(part.startswith(".") or part in SKIP_DIRS for part in p.relative_to(folder).parts[:-1]):
-            continue
-        yield p
+    # os.walk with pruning: never descend into hidden, skipped or junk folders (rglob would walk them all first).
+    for dirpath, dirnames, filenames in os.walk(folder):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS and d not in JUNK_DIRS]
+        for f in filenames:
+            if f.lower().endswith(".pdf") and not f.startswith("."):
+                yield Path(dirpath) / f
 
 
 def scan():
