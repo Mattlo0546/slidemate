@@ -341,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": os.path.exists(target)})
         if p == "/api/lecture/start":
             return self._json({"id": lecture.start(body["path"], body.get("ext", "webm"))})
+        if p == "/api/lecture/heartbeat":
+            lecture.heartbeat(body.get("id"))
+            return self._json({"ok": True})
         if p == "/api/lecture/events":
             lecture.add_events(body["id"], body.get("events", []))
             return self._json({"ok": True})
@@ -507,6 +510,7 @@ def main():
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
+    threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
     print(f"SlideMate running on http://127.0.0.1:{config.PORT}  (data: {config.DATA})", flush=True)

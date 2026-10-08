@@ -93,6 +93,7 @@ def start(path, ext="webm"):
 
 
 def add_chunk(lid, seq, data):
+    heartbeat(lid)
     with _lock(lid):
         m = load_meta(lid)
         if m.get("status") != "recording":
@@ -450,6 +451,41 @@ def slide_notes(path, page):
     return f"What the lecturer said about slide {page} (lecture on {m['date']}):\n{s.get('notes_md', '')}" + (f"\n\nVerbatim:\n{quotes}" if quotes else "")
 
 
+# The page recording a lecture pings every ~20 s (even while paused). If the pings stop (page reloaded, WebView
+# crashed), the recording can't continue, so finish it rather than leaving it stuck as "recording".
+HEARTBEAT = {}
+
+
+def heartbeat(lid):
+    HEARTBEAT[lid] = time.time()
+
+
+def _abandon(lid, ended, note):
+    save_meta(lid, status="transcribing", ended=ended, note=note)
+    threading.Thread(target=_finish, args=(lid, None), daemon=True).start()
+
+
+def watch_recordings(every=60):
+    while True:
+        time.sleep(every)
+        check_recordings()
+
+
+def check_recordings(silent_for=90):
+    for d in LECTURES.iterdir():
+        m = lib._load(d / "meta.json", None)
+        if not m or m.get("status") != "recording":
+            continue
+        lid, audio = m.get("id"), audio_path(m.get("id"))
+        last = HEARTBEAT.get(lid) or (audio.stat().st_mtime if audio.exists() else m.get("started", 0))
+        if time.time() - last > (silent_for if lid in HEARTBEAT else 180):
+            try:
+                _abandon(lid, audio.stat().st_mtime if audio.exists() else time.time(),
+                         "finished automatically: the recording page stopped (reloaded or closed)")
+            except Exception as e:
+                print("abandon failed", lid, e, flush=True)
+
+
 def resume_unfinished(stale_after=180):
     """On startup: finish lectures whose processing was cut off (app quit mid-transcription), and recordings that
     were abandoned (crash/force-quit: no new audio for a few minutes), so nothing is left stuck."""
@@ -466,7 +502,6 @@ def resume_unfinished(stale_after=180):
             elif st == "recording":
                 audio = audio_path(lid)
                 if audio.exists() and time.time() - audio.stat().st_mtime > stale_after:
-                    save_meta(lid, status="transcribing", ended=audio.stat().st_mtime, note="finished automatically after the app closed")
-                    threading.Thread(target=_finish, args=(lid, None), daemon=True).start()
+                    _abandon(lid, audio.stat().st_mtime, "finished automatically after the app closed")
         except Exception as e:
             print("resume failed", lid, e, flush=True)

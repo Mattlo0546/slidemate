@@ -330,6 +330,7 @@ async function openPdf(path, page) {
 async function buildPages() {
   viewer.innerHTML = '';
   state.pages = [];
+  visible.clear();  // stale entries from the previous deck/zoom (e.g. slide 45 of a longer deck) broke slide tracking
   if (observer) observer.disconnect();
   const first = await state.pdf.getPage(1);
   const vp1 = first.getViewport({ scale: 1 });
@@ -363,6 +364,7 @@ function onIntersect(entries) {
   const focus = atTop ? vr.top : atEnd ? vr.bottom : vr.top + vr.height / 2;
   let cur = state.current, best = -1, bestDist = Infinity;
   for (const n of visible.keys()) {
+    if (!state.pages[n - 1]) continue;
     const r = state.pages[n - 1].div.getBoundingClientRect();
     const seen = Math.min(r.bottom, vr.bottom) - Math.max(r.top, vr.top);
     const dist = Math.abs((r.top + r.bottom) / 2 - focus);
@@ -1390,6 +1392,8 @@ async function startRecording() {
   recorder.ondataavailable = (e) => { if (e.data.size) { rec.queue.push({ seq: ++rec.seq, blob: e.data }); pump(); } };
   recorder.start(15000);
   rec.timer = setInterval(() => { $('#recTime').textContent = fmtT(audioTime()); }, 500);
+  // Tell the server this page is still recording (even while paused); if it goes quiet, the server finishes it.
+  rec.beat = setInterval(() => post('/api/lecture/heartbeat', { id }).catch(() => {}), 20000);
   $('#btnRec').hidden = true; $('#recPill').hidden = false; $('#recPill').classList.remove('paused');
   setPanelTab('notes');
   await loadLectures(state.path, id);
@@ -1446,6 +1450,7 @@ async function stopRecording(askFirst = true) {
   while (r.queue.length || r.pumping) { await pump(); await new Promise((ok) => setTimeout(ok, 300)); }
   if (r.events.length) await post('/api/lecture/events', { id: r.id, events: r.events.splice(0) });
   await post('/api/lecture/stop', { id: r.id });
+  clearInterval(r.beat);
   rec = null;
   $('#btnRec').hidden = false; $('#recPill').hidden = true;
   $('#btnRecPause').innerHTML = '<svg><use href="#i-pause"/></svg>';

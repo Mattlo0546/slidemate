@@ -80,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             alert.alertStyle = .warning
             alert.messageText = "A lecture is being recorded"
             alert.informativeText = "You've recorded \(secs / 60) min \(secs % 60) s. If you \(action) now, SlideMate stops the recording "
-                + "and saves the audio. Your notes are written next time SlideMate is open."
+                + (action == "reload" ? "and saves the audio, then writes your notes." : "and saves the audio. Your notes are written next time SlideMate is open.")
             alert.addButton(withTitle: "Keep Recording")
             alert.addButton(withTitle: "Stop & \(action.capitalized)")
             if alert.runModal() == .alertFirstButtonReturn { return cancel() }
@@ -245,7 +245,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     // MARK: menus
 
     @objc func openSettings() { web.evaluateJavaScript("document.querySelector('#btnSettings')?.click()") }
-    @objc func reloadPage() { if ready { web.reload() } }
+    @objc func reloadPage() {
+        guard ready else { return }
+        // Reloading the page ends a recording (it lives in the page), so ask first, like quitting.
+        confirmIfRecording(action: "reload", proceed: { [weak self] in self?.quitConfirmed = false; self?.web.reload() }, cancel: {})
+    }
 
     func buildMenu() {
         let main = NSMenu()
