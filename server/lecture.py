@@ -138,24 +138,35 @@ def transcribe(audio, offset=0.0, start_at=None, wait=True):
         TRANSCRIBE_LOCK.release()
 
 
+SEGMENT = 900  # seconds: long recordings are transcribed in 15-minute pieces so memory stays small
+
+
 def _transcribe(audio, offset, start_at):
     work = Path(audio).parent / f"tmp-{uuid.uuid4().hex[:6]}"
     work.mkdir()
     try:
-        wav = work / "a.wav"
         parakeet = config.which("parakeet-mlx")
         if not parakeet:
             raise RuntimeError("Transcription needs parakeet-mlx: " + tools_status()["install"])
+        # Decode to 16 kHz mono WAV, split into pieces in the same pass. Parakeet holds a whole file in memory
+        # (a 95-minute lecture took ~5 GB and crawled on a busy 16 GB Mac); 15-minute pieces stay well under 1 GB.
         cmd = [FFMPEG(), "-loglevel", "error", "-y"]
         if start_at:
             cmd += ["-ss", f"{start_at:.2f}"]
-        cmd += ["-i", str(audio), "-ar", "16000", "-ac", "1", str(wav)]
+        cmd += ["-i", str(audio), "-ar", "16000", "-ac", "1", "-f", "segment", "-segment_time", str(SEGMENT),
+                str(work / "seg%03d.wav")]
         subprocess.run(cmd, check=True, timeout=1800, env=ENV)
-        subprocess.run([parakeet, str(wav), "--output-format", "json", "--output-dir", str(work)],
+        segs = sorted(work.glob("seg*.wav"))
+        # One Parakeet process for all pieces, so the model loads once.
+        subprocess.run([parakeet, *map(str, segs), "--output-format", "json", "--output-dir", str(work)],
                        check=True, capture_output=True, timeout=7200, env=ENV)
-        data = json.loads((work / "a.json").read_text())
-        return [{"start": round(s["start"] + offset, 2), "end": round(s["end"] + offset, 2), "text": s["text"].strip()}
-                for s in data.get("sentences", []) if s.get("text", "").strip()]
+        out = []
+        for i, seg in enumerate(segs):
+            data = json.loads(seg.with_suffix(".json").read_text())
+            base = offset + i * SEGMENT
+            out += [{"start": round(x["start"] + base, 2), "end": round(x["end"] + base, 2), "text": x["text"].strip()}
+                    for x in data.get("sentences", []) if x.get("text", "").strip()]
+        return out
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
