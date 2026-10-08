@@ -123,8 +123,22 @@ def _duration(path):
         return 0.0
 
 
-def transcribe(audio, offset=0.0, start_at=None):
-    """Run Parakeet on (part of) an audio file. Returns [{start, end, text}]."""
+# One Parakeet run at a time: two long lectures transcribing at once can exhaust memory and crawl for hours.
+TRANSCRIBE_LOCK = threading.Lock()
+
+
+def transcribe(audio, offset=0.0, start_at=None, wait=True):
+    """Run Parakeet on (part of) an audio file. Returns [{start, end, text}], or None if wait=False and another
+    transcription is running."""
+    if not TRANSCRIBE_LOCK.acquire(blocking=wait):
+        return None
+    try:
+        return _transcribe(audio, offset, start_at)
+    finally:
+        TRANSCRIBE_LOCK.release()
+
+
+def _transcribe(audio, offset, start_at):
     work = Path(audio).parent / f"tmp-{uuid.uuid4().hex[:6]}"
     work.mkdir()
     try:
@@ -161,9 +175,11 @@ def _live_loop(lid):
         if dur - off < 45:
             continue
         try:
-            sents = transcribe(audio, offset=off, start_at=off)
+            sents = transcribe(audio, offset=off, start_at=off, wait=False)  # skip a turn if a full pass is running
         except Exception as e:
             print("live transcribe failed", e, flush=True)
+            continue
+        if sents is None:
             continue
         # Keep the unfinished last sentence for the next pass.
         if len(sents) > 1:
@@ -249,6 +265,11 @@ def _safe_notes(lid, model):
 
 
 def regenerate(lid, model="opus"):
+    if not (ldir(lid) / "transcript.json").exists() and audio_path(lid).exists():
+        # Transcription never finished (e.g. it was interrupted): redo the whole thing, not just the notes.
+        save_meta(lid, status="transcribing", error=None)
+        threading.Thread(target=_finish, args=(lid, model), daemon=True).start()
+        return
     save_meta(lid, status="writing", error=None)
     threading.Thread(target=lambda: _safe_notes(lid, model), daemon=True).start()
 
