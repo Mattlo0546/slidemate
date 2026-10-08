@@ -38,6 +38,7 @@ DEFAULTS = {
     "codex_model": "",              # blank = Codex default
     "codex_effort": "",             # "" = model default
     "ipad_name": "",
+    "rec_limit_min": 120,  # stop + save a lecture recording after this long (0 = no limit)
     "airdrop": True,
     "copy_to_clipboard": True,
     "write_markdown": True,         # also save chats / lecture notes as Markdown next to your slides

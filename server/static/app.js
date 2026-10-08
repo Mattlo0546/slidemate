@@ -334,6 +334,7 @@ async function buildPages() {
   if (observer) observer.disconnect();
   const first = await state.pdf.getPage(1);
   const vp1 = first.getViewport({ scale: 1 });
+  state.base = { w: vp1.width, h: vp1.height };
   // "Fit" = the whole slide fits on screen, so there's always one clear current slide.
   if (state.fit || !state.scale) state.scale = Math.min((viewer.clientWidth - 110) / vp1.width, (viewer.clientHeight - 48) / vp1.height);
   observer = new IntersectionObserver(onIntersect, { root: viewer, threshold: [0, 0.25, 0.5, 0.75, 1] });
@@ -449,17 +450,41 @@ function zoomAround(scale, cx, cy) {
     if (r && cy >= r.top - 10 && cy <= r.bottom + 10) { anchor = { n, fx: (cx - r.left) / r.width, fy: (cy - r.top) / r.height }; break; }
   }
   anchor ||= { n: state.current, fx: 0.5, fy: 0.5 };
-  // Resize every slide in place; the existing canvases stretch until they're re-rendered (no white flash).
-  const k = scale / old;
+  rescaleInPlace(scale);
+  state.fit = false;
+  const d = state.pages[anchor.n - 1].div;
+  viewer.scrollLeft = d.offsetLeft + anchor.fx * d.offsetWidth - (cx - vr.left);
+  viewer.scrollTop = d.offsetTop + anchor.fy * d.offsetHeight - (cy - vr.top);
+}
+// Resize every slide in place; the existing canvases stretch until they're re-rendered (no white flash).
+function rescaleInPlace(scale) {
+  const k = scale / state.scale;
   for (const p of state.pages) {
     p.div.style.width = parseFloat(p.div.style.width) * k + 'px';
     p.div.style.height = parseFloat(p.div.style.height) * k + 'px';
     if (p.div.style.getPropertyValue('--scale-factor')) p.div.style.setProperty('--scale-factor', scale);
   }
-  state.scale = scale; state.fit = false;
-  const d = state.pages[anchor.n - 1].div;
-  viewer.scrollLeft = d.offsetLeft + anchor.fx * d.offsetWidth - (cx - vr.left);
-  viewer.scrollTop = d.offsetTop + anchor.fy * d.offsetHeight - (cy - vr.top);
+  state.scale = scale;
+}
+// Fit mode while a panel is dragged or the window resized: refit the slides every frame, live (like Claude's
+// panels), keeping the current slide where it sits; they re-render sharp once the resizing stops.
+function fitNow() {
+  if (!state.pdf || !state.fit || !state.pages.length || !state.base) return;
+  const s = Math.min((viewer.clientWidth - 110) / state.base.w, (viewer.clientHeight - 48) / state.base.h);
+  if (!(s > 0) || Math.abs(s - state.scale) < 1e-4) return;
+  const d = state.pages[state.current - 1].div, vr = viewer.getBoundingClientRect(), r = d.getBoundingClientRect();
+  const frac = (r.top + r.height / 2 - vr.top) / viewer.clientHeight;  // where the current slide's middle sits
+  pinch.active = true;  // no re-rendering mid-resize
+  state.pinUntil = performance.now() + 400;  // and the current slide stays the current slide
+  rescaleInPlace(s);
+  viewer.scrollTop = d.offsetTop + d.offsetHeight / 2 - frac * viewer.clientHeight;
+}
+let fitRaf = 0, fitEndT = 0;
+function liveFit(settle = 180) {
+  cancelAnimationFrame(fitRaf);
+  fitRaf = requestAnimationFrame(fitNow);
+  clearTimeout(fitEndT);
+  fitEndT = setTimeout(() => { fitNow(); if (pinch.active) endPinch(); }, settle);
 }
 function endPinch() {
   pinch.active = false;
@@ -482,8 +507,7 @@ $('#btnNext').onclick = () => goTo(state.current + 1);
 $('#btnZoomIn').onclick = () => setZoom(state.scale * 1.2);
 $('#btnZoomOut').onclick = () => setZoom(state.scale / 1.2);
 $('#btnFit').onclick = () => setZoom(null, true);
-let resizeT;
-window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => state.pdf && state.fit && setZoom(null, true), 200); });
+window.addEventListener('resize', () => liveFit());
 
 // Render a page (optionally a crop in 0..1 page coords) to a data URL at a target pixel width.
 async function renderImage(n, { width = 2400, crop = null, type = 'image/png', quality = 0.9 } = {}) {
@@ -931,7 +955,7 @@ $('#btnReset').onclick = async () => {
 // Panels, settings, keyboard, drag & drop
 // =====================================================================================
 function showChat() { document.body.classList.remove('chat-hidden'); store.set('chatHidden', false); }
-function refit() { if (state.pdf && state.fit) setTimeout(() => setZoom(null, true), 0); }
+function refit() { if (state.pdf && state.fit) liveFit(0); }
 function toggleLib() { document.body.classList.toggle('lib-hidden'); store.set('libHidden', document.body.classList.contains('lib-hidden')); refit(); }
 $('#btnChat').onclick = () => { document.body.classList.toggle('chat-hidden'); store.set('chatHidden', document.body.classList.contains('chat-hidden')); refit(); };
 $('#btnLibrary').onclick = toggleLib;
@@ -1017,6 +1041,7 @@ async function openSettings(firstRun = false, pane) {
   showPane(pane || store.get('settingsPane', 'general'));
   renderRoots();
   $('#setIpad').value = cfg.ipad_name || '';
+  $('#setRecLimit').value = cfg.rec_limit_min ?? 120;
   $('#setAirdrop').checked = cfg.airdrop;
   $('#setClip').checked = cfg.copy_to_clipboard;
   $('#setSync').value = cfg.sync_command || '';
@@ -1240,6 +1265,7 @@ function settingsPayload() {
     sync_login_command: mode === 'command' ? $('#setSyncLogin').value.trim() : '',
     sync_mcp: mode === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
     write_markdown: $('#setMd').checked,
+    rec_limit_min: Math.max(0, Math.min(1440, Math.round(+$('#setRecLimit').value || 0))),
   };
 }
 // Changes apply as you make them (no Save button), like Cursor.
@@ -1260,7 +1286,7 @@ async function saveSettings(now = false) {
   saveT = setTimeout(go, 400);
 }
 $('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp')) saveSettings(); });
-$('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel')) saveSettings(); });
+$('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit')) saveSettings(); });
 $('#btnSettingsClose').onclick = () => $('#settings').close();
 $('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
 $('#settings').addEventListener('close', () => { if (!document.body.classList.contains('first-run')) saveSettings(true); });
@@ -1296,7 +1322,7 @@ document.querySelectorAll('.resizer').forEach((r) => {
     r.classList.add('dragging');
     document.body.classList.add('resizing');
     const panel = r.parentElement.getBoundingClientRect();
-    const move = (ev) => setPanelWidth(name, name === 'library' ? ev.clientX - panel.left : panel.right - ev.clientX);
+    const move = (ev) => { setPanelWidth(name, name === 'library' ? ev.clientX - panel.left : panel.right - ev.clientX); liveFit(250); };
     const up = () => {
       r.removeEventListener('pointermove', move);
       r.classList.remove('dragging');
@@ -1399,6 +1425,7 @@ async function startRecording() {
   rec.timer = setInterval(() => {
     $('#recTime').textContent = fmtT(audioTime());
     if (!rec.paused && performance.now() - rec.lastData > 45000) micLost();
+    checkRecLimit();
   }, 500);
   // Tell the server this page is still recording (even while paused); if it goes quiet, the server finishes it.
   rec.beat = setInterval(() => post('/api/lecture/heartbeat', { id }).catch(() => {}), 20000);
@@ -1447,6 +1474,21 @@ function togglePause() {
   $('#btnRecPause').title = rec.paused ? 'Resume' : 'Pause';
 }
 
+// Time limit (Settings → Lecture recording; default 2 h, 0 = none): warn 5 min before, then stop and save.
+function checkRecLimit() {
+  const lim = Math.max(0, +(cfg.rec_limit_min ?? 120) || 0) * 60, t = audioTime();
+  if (!rec || rec.lost || !lim) return;
+  const label = lim % 3600 ? `${Math.round(lim / 60)}-minute` : `${lim / 3600}-hour`;
+  if (lim >= 900 && t >= lim - 300 && !rec.limitWarned) {
+    rec.limitWarned = true;
+    toast(`Recording stops automatically in 5 minutes (${label} limit, change it in Settings → Lecture recording).`, false, 9000);
+  }
+  if (t >= lim) {
+    rec.lost = true;
+    toast(`Reached the ${label} recording limit, so SlideMate stopped and saved the recording. Your notes are being written.`, false, 12000);
+    stopRecording(false);
+  }
+}
 function micLost() {
   if (!rec || rec.lost) return;
   rec.lost = true;
