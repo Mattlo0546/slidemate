@@ -19,7 +19,7 @@ for d in (DATA, WORK, CHATS, LECTURES):
 
 # Tools are looked up on a PATH that includes the usual install locations, because apps
 # launched from Finder don't inherit your shell's PATH.
-EXTRA_PATH = [str(HOME / ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin", str(HOME / ".npm-global/bin"),
+EXTRA_PATH = [str(HOME / ".local/bin"), str(HOME / ".grok/bin"), "/opt/homebrew/bin", "/usr/local/bin", str(HOME / ".npm-global/bin"),
               str(HOME / ".bun/bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 ENV = {**os.environ, "PATH": ":".join(EXTRA_PATH + os.environ.get("PATH", "").split(":"))}
 
@@ -31,12 +31,15 @@ def which(name):
 DEFAULTS = {
     "setup_done": False,
     "library_roots": [],            # folders that hold your courses (each sub-folder = one course)
-    "provider": "claude",           # "claude" (Claude Code) or "codex" (Codex CLI / ChatGPT sign-in)
+    "provider": "claude",           # "claude" (Claude Code), "codex" (Codex CLI), "cursor" (Cursor CLI) or "grok" (Grok CLI)
     "claude_model": "sonnet",
     "claude_notes_model": "opus",
     "claude_effort": "",            # "" = default, or low / medium / high / xhigh / max
     "codex_model": "",              # blank = Codex default
     "codex_effort": "",             # "" = model default
+    "cursor_model": "",             # blank = Cursor default (Auto); effort is part of Cursor's model names
+    "grok_model": "",               # blank = Grok default
+    "grok_effort": "",              # "" = model default
     "ipad_name": "",
     "rec_limit_min": 120,  # stop + save a lecture recording after this long (0 = no limit)
     "airdrop": True,

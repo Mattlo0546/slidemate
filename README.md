@@ -21,8 +21,9 @@ loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor t
 the lecture itself (if you recorded it). Ask about the slide you're on, and the answer explains how it connects to the rest of
 the course.
 
-It runs locally on your Mac and uses the AI you already pay for, either **Claude** (via Claude Code) or **ChatGPT**
-(via Codex). No API keys, no account, no server.
+It runs locally on your Mac and uses the AI you already pay for: **Claude** (via Claude Code), **ChatGPT**
+(via Codex), **Cursor** (via the Cursor CLI, with any model your Cursor plan offers) or **Grok** (via the Grok CLI).
+No API keys, no account, no server.
 
 ## What it does
 
@@ -109,7 +110,8 @@ a single file. PDFs dropped onto the window get filed into the right course.
 git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
 ```
 
-Either way you need **Claude Code** *or* **Codex** signed in. The setup screen checks this and has a Sign in button.
+Either way you need one of **Claude Code**, **Codex**, **Cursor CLI** or **Grok CLI** signed in. The setup screen
+checks this and has a Sign in button.
 
 ---
 
@@ -125,14 +127,15 @@ The app isn't notarised by Apple yet, so the first time you open it macOS will b
 - **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
 
 You'll also need:
-- **Claude Code or Codex CLI, signed in.** These are the AI that does the tutoring (see the table below).
+- **Claude Code, Codex, Cursor CLI or Grok CLI, signed in.** These are the AI that does the tutoring (see the table
+  below).
 - **Apple's Command Line Tools** for Python: `xcode-select --install`. Most developers already have them.
-- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for ChatGPT slide text and lecture
-  recording. The setup screen tells you if anything is missing.
+- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (ChatGPT, Cursor and
+  Grok read it) and lecture recording. The setup screen tells you if anything is missing.
 
 ## Install from source
 
-Requirements: macOS 13+, [Homebrew](https://brew.sh), and Claude Code **or** Codex CLI signed in.
+Requirements: macOS 13+, [Homebrew](https://brew.sh), and one of Claude Code, Codex, Cursor CLI or Grok CLI signed in.
 
 ```bash
 git clone https://github.com/Mattlo0546/slidemate.git
@@ -142,17 +145,19 @@ scripts/install.sh
 
 The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app`,
 copies it to Applications and opens it. A setup screen asks for your slides folder (or creates one for you) and your
-AI provider. It shows whether Claude and ChatGPT are installed and signed in, and has a **Sign in** button.
+AI provider. It shows whether Claude, ChatGPT, Cursor and Grok are installed and signed in, and has a **Sign in** button.
 
 Because the app is built on your Mac, it opens normally. If you instead download a prebuilt copy, macOS will ask you
 to right-click → Open the first time, since it isn't notarised.
 
-**AI provider (pick one or both):**
+**AI provider (pick one or more):**
 
 | Provider | Install | Sign in |
 | --- | --- | --- |
 | Claude | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude auth login` (Pro/Max account) |
 | ChatGPT | `brew install codex` | `codex login` (ChatGPT account) |
+| Cursor | `curl https://cursor.com/install -fsS \| bash` | `cursor-agent login` (Cursor account) |
+| Grok | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` (grok.com / SuperGrok account) |
 
 SlideMate runs these CLIs on your behalf with your own subscription. Check each provider's terms for your plan.
 
@@ -180,12 +185,14 @@ System Settings → Privacy & Security → Accessibility. Without it, you click 
 ## MCP connections
 
 
-Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add server…* with a command and arguments
+Settings → **Connections (MCP)** → *Import from other AI apps…* (Claude, Codex, Cursor and Grok), or *Add server…* with a command and arguments
 (the same format as Claude Desktop's `mcpServers`).
 
 - **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
   blackboard › bb_upcoming…" while it works. With Claude, servers are passed via `--mcp-config` with their tools
   allowed. With Codex, they're passed as `-c mcp_servers.*` overrides with `default_tools_approval_mode="approve"`.
+  With Cursor and Grok, SlideMate writes them into the session's own scratch folder (`.cursor/mcp.json` with an
+  allow rule for their tools, or `.grok/config.toml`); shell commands and file edits stay off.
 - **Pull**: if a server you add has a sync-style tool (e.g. `bb_sync`), SlideMate wires it to a **Pull from
   <Server>** button in the library automatically, with its sign-in tool (e.g. `bb_login`) used when the session
   has expired. Long syncs that run in the background are followed to the end by polling the matching
@@ -232,7 +239,7 @@ PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) th
 | Piece | Where |
 | --- | --- |
 | Server, library, chats | `server/server.py`, `server/library.py` |
-| AI providers (Claude Code / Codex) | `server/providers.py` |
+| AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
 | MCP connections + client | `server/mcp.py` |
 | Lecture recording → notes | `server/lecture.py` |
 | UI | `server/static/` |

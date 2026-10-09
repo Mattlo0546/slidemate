@@ -970,7 +970,8 @@ if (store.get('libHidden', false)) document.body.classList.add('lib-hidden');
 
 // ---------- settings + first-run setup ----------
 let sysStatus = null;
-const providerLabel = () => (cfg.provider === 'codex' ? 'ChatGPT' : 'Claude');
+const PROVIDER_NAMES = { claude: 'Claude', codex: 'ChatGPT', cursor: 'Cursor', grok: 'Grok' };
+const providerLabel = () => PROVIDER_NAMES[cfg.provider] || 'Claude';
 async function refreshTrust() {
   $('#trustStatus').textContent = 'Checking auto-select…';
   const { trusted } = await (await api('/api/trust')).json();
@@ -1005,17 +1006,36 @@ function renderProviders() {
   };
   $('#providerCards').innerHTML = card('claude', 'Claude', 'Claude Code · your Claude Pro/Max account. Reads slides natively.')
     + card('codex', 'ChatGPT', 'Codex CLI · your ChatGPT account.')
+    + card('cursor', 'Cursor', 'Cursor CLI · your Cursor account, with any model Cursor offers.')
+    + card('grok', 'Grok', 'Grok CLI · your grok.com / SuperGrok account.')
     + `<button type="button" class="small ghost" id="btnRecheck">Re-check sign-in</button>`;
-  const pdfHint = draft.provider === 'codex' && sysStatus && !sysStatus.pdftools
-    ? '<div class="set-label" style="grid-column:1/-1"><span>ChatGPT reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>' : '';
+  const pdfHint = draft.provider !== 'claude' && sysStatus && !sysStatus.pdftools
+    ? `<div class="set-label" style="grid-column:1/-1"><span>${PROVIDER_NAMES[draft.provider]} reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>` : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
-  const sel = (id, opts, cur) => `<select id="${id}" class="set-input">${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const sel = (id, opts, cur) => `<select id="${id}" class="set-input">${opts.map(([v, l]) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const claudeModels = [['sonnet', 'Sonnet 5.5 · fast'], ['opus', 'Opus 5.5 · deepest'], ['fable', 'Fable 5.1 · most powerful'], ['haiku', 'Haiku 4.5 · fastest']];
-  $('#modelRow').innerHTML = draft.provider === 'codex'
-    ? `<label class="set-row"><div class="set-label"><b>Model</b><span>Leave blank to use your Codex default. You can also switch from the chat box.</span></div>
-         <input id="setCodexModel" class="set-input" value="${esc(draft.codex_model || '')}" placeholder="Codex default"></label>`
-    : `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
+  const p = draft.provider;
+  if (p === 'codex') {
+    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>Leave blank to use your Codex default. You can also switch from the chat box.</span></div>
+         <input id="setCodexModel" class="set-input" value="${esc(draft.codex_model || '')}" placeholder="Codex default"></label>`;
+  } else if (p === 'cursor' || p === 'grok') {
+    const list = setCat?.[p]?.models, cur = draft[`${p}_model`] || '';
+    const opts = [['', `${PROVIDER_NAMES[p]} default`], ...(list || []).map((m) => [m.id, m.label])];
+    if (cur && !opts.some(([v]) => v === cur)) opts.push([cur, cur]);
+    const hint = list ? 'Used for chat and lecture notes. You can also switch it from the chat box.' : 'Loading the models on your account…';
+    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>${hint}</span></div>${sel(p === 'cursor' ? 'setCursorModel' : 'setGrokModel', opts, cur)}</label>`;
+    if (!list && !setCatLoading) loadSetCat();
+  } else {
+    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
        <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, draft.claude_notes_model)}</label>`;
+  }
+}
+let setCat = null, setCatLoading = false;  // every provider's model list, for the settings pane
+async function loadSetCat() {
+  setCatLoading = true;
+  try { setCat = await (await api('/api/models?all=1')).json(); } catch { setCat = {}; }
+  setCatLoading = false;
+  if ($('#settings').open) { readModelFields(); renderProviders(); }
 }
 $('#providerCards').addEventListener('change', (e) => { if (e.target.name === 'prov') { readModelFields(); draft.provider = e.target.value; renderProviders(); } });
 $('#providerCards').addEventListener('click', async (e) => {
@@ -1025,6 +1045,8 @@ $('#providerCards').addEventListener('click', async (e) => {
 });
 function readModelFields() {
   if ($('#setCodexModel')) draft.codex_model = $('#setCodexModel').value.trim();
+  if ($('#setCursorModel')) draft.cursor_model = $('#setCursorModel').value;
+  if ($('#setGrokModel')) draft.grok_model = $('#setGrokModel').value;
   if ($('#setClaudeModel')) { draft.claude_model = $('#setClaudeModel').value; draft.claude_notes_model = $('#setClaudeNotes').value; }
 }
 async function loadStatus() { sysStatus = await (await api('/api/status')).json(); }
@@ -1106,7 +1128,7 @@ $('#mcpList').addEventListener('change', async (e) => {
 $('#btnMcpImport').onclick = async () => {
   const box = $('#mcpImport');
   box.hidden = false; $('#mcpForm').hidden = true;
-  box.innerHTML = '<div class="hint">Looking for MCP servers in Claude Desktop, Claude Code and Codex…</div>';
+  box.innerHTML = '<div class="hint">Looking for MCP servers in Claude Desktop, Claude Code, Codex, Cursor and Grok…</div>';
   const found = await (await api('/api/mcp/discover')).json();
   const names = Object.keys(found).filter((n) => !found[n].added);
   box.innerHTML = names.length ? names.map((n) => `<label class="imp"><input type="checkbox" value="${esc(n)}"><b>${esc(n)}</b>
@@ -1172,11 +1194,11 @@ function renderModelBtn() {
   const c = provCat();
   if (!c) return;
   const m = c.models.find((x) => x.id === c.model);
-  const name = m ? m.label : (catalog.provider === 'codex' ? 'Default model' : c.model);
+  const name = m ? m.label : (catalog.provider === 'claude' ? c.model : c.model || 'Default model');
   $('#modelLabel').textContent = `${name}${c.effort ? ' · ' + (EFFORT_LABEL[c.effort] || c.effort) : ''}`;
 }
 function effortsFor(c) {
-  if (catalog.provider === 'claude') return c.efforts;
+  if (c.efforts) return c.efforts;  // Claude: one list; Cursor: none (effort is part of the model name)
   const m = c.models.find((x) => x.id === c.model);
   return m?.efforts || ['low', 'medium', 'high', 'xhigh'];
 }
@@ -1184,11 +1206,17 @@ function openModelMenu() {
   const c = provCat();
   if (!c) return;
   const menu = $('#modelMenu');
-  const models = catalog.provider === 'codex' ? [{ id: '', label: 'Default', desc: 'Whatever Codex is set to use' }, ...c.models] : c.models;
-  menu.innerHTML = `<div class="label">${catalog.provider === 'codex' ? 'ChatGPT model' : 'Claude model'}</div>`
-    + models.map((m) => `<button class="mrow" data-model="${esc(m.id)}"><b>${esc(m.label)}${m.id === c.model ? '<span class="chk">✓</span>' : ''}</b>${m.desc ? `<span>${esc(m.desc)}</span>` : ''}</button>`).join('')
-    + `<hr><div class="label">Effort</div><div class="efforts">${['', ...effortsFor(c)].map((e) => `<button data-effort="${e}" class="${e === (c.effort || '') ? 'on' : ''}">${EFFORT_LABEL[e] || e}</button>`).join('')}</div>`;
+  const cli = { codex: 'Codex', cursor: 'Cursor', grok: 'Grok' }[catalog.provider];
+  const models = cli ? [{ id: '', label: 'Default', desc: `Whatever ${cli} is set to use` }, ...c.models] : c.models;
+  if (cli && c.model && !models.some((m) => m.id === c.model)) models.push({ id: c.model, label: c.model, desc: '' });
+  const efforts = effortsFor(c);
+  const long = models.length > 12;
+  menu.innerHTML = `<div class="label">${providerLabel()} model</div>`
+    + (long ? '<input class="mfilter" placeholder="Search models…" autocomplete="off" spellcheck="false">' : '')
+    + `<div class="mlist">${models.map((m) => `<button class="mrow" data-model="${esc(m.id)}" data-q="${esc((m.label + ' ' + m.id).toLowerCase())}"><b>${esc(m.label)}${m.id === (c.model || '') ? '<span class="chk">✓</span>' : ''}</b>${m.desc ? `<span>${esc(m.desc)}</span>` : ''}</button>`).join('')}</div>`
+    + (efforts.length ? `<hr><div class="label">Effort</div><div class="efforts">${['', ...efforts].map((e) => `<button data-effort="${e}" class="${e === (c.effort || '') ? 'on' : ''}">${EFFORT_LABEL[e] || e}</button>`).join('')}</div>` : '');
   menu.hidden = false;
+  if (long) { menu.querySelector('.mfilter').focus(); menu.querySelector('.mrow .chk')?.closest('.mrow').scrollIntoView({ block: 'nearest' }); }
   placeAbove(menu, $('#modelBtn'));
 }
 function placeAbove(menu, anchor) {
@@ -1201,6 +1229,15 @@ function placeAbove(menu, anchor) {
   requestAnimationFrame(place);  // fonts/layout can settle a frame later on first open
 }
 $('#modelBtn').onclick = (e) => { e.stopPropagation(); $('#modelMenu').hidden ? openModelMenu() : ($('#modelMenu').hidden = true); };
+$('#modelMenu').addEventListener('input', (e) => {
+  if (!e.target.matches('.mfilter')) return;
+  const q = e.target.value.trim().toLowerCase().split(/\s+/);
+  $('#modelMenu').querySelectorAll('.mrow').forEach((r) => { r.hidden = !q.every((w) => r.dataset.q.includes(w)); });
+  placeAbove($('#modelMenu'), $('#modelBtn'));
+});
+$('#modelMenu').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('.mfilter')) [...$('#modelMenu').querySelectorAll('.mrow')].find((r) => !r.hidden)?.click();
+});
 $('#modelMenu').addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
@@ -1265,6 +1302,7 @@ function settingsPayload() {
   return {
     library_roots: draft.library_roots, provider: draft.provider, claude_model: draft.claude_model,
     claude_notes_model: draft.claude_notes_model, codex_model: draft.codex_model,
+    cursor_model: draft.cursor_model, grok_model: draft.grok_model,
     ipad_name: $('#setIpad').value.trim(), airdrop: $('#setAirdrop').checked, copy_to_clipboard: $('#setClip').checked,
     sync_command: mode === 'command' ? $('#setSync').value.trim() : '',
     sync_login_command: mode === 'command' ? $('#setSyncLogin').value.trim() : '',
@@ -1283,7 +1321,7 @@ async function saveSettings(now = false) {
     cfg = await post('/api/config', settingsPayload());
     $('#savedHint').textContent = 'Saved'; $('#savedHint').style.opacity = 1;
     setTimeout(() => { $('#savedHint').style.opacity = 0; }, 1200);
-    if (before.provider !== cfg.provider || before.claude_model !== cfg.claude_model || before.codex_model !== cfg.codex_model) loadModels();
+    if (['provider', 'claude_model', 'codex_model', 'cursor_model', 'grok_model'].some((k) => before[k] !== cfg[k])) loadModels();
     if (JSON.stringify(before.library_roots) !== JSON.stringify(cfg.library_roots)) loadLibrary();
     if (before.sync_mcp?.tool !== cfg.sync_mcp?.tool || before.sync_command !== cfg.sync_command) loadLibrary();
   };

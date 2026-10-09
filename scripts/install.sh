@@ -52,7 +52,7 @@ if [ "${1:-}" = "--build-only" ]; then scripts/build-app.sh; else scripts/build-
 
 echo
 bold "AI tutor: SlideMate uses an AI app you're signed in to (no API keys). You need at least one:"
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.grok/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 have_ai=0
 if command -v claude >/dev/null; then
   if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then ok "Claude: signed in"; have_ai=1
@@ -62,6 +62,14 @@ if command -v codex >/dev/null; then
   if codex login status 2>&1 | grep -qi "logged in"; then ok "ChatGPT (Codex): signed in"; have_ai=1
   else warn "Codex is installed but not signed in. Run: codex login"; fi
 else echo "  • ChatGPT: brew install codex   then: codex login"; fi
+if command -v cursor-agent >/dev/null; then
+  if cursor-agent status 2>&1 | grep -qi "logged in as"; then ok "Cursor: signed in"; have_ai=1
+  else warn "Cursor CLI is installed but not signed in. Run: cursor-agent login"; fi
+else echo "  • Cursor:  curl https://cursor.com/install -fsS | bash   then: cursor-agent login"; fi
+if command -v grok >/dev/null; then
+  if grok models 2>&1 | grep -qi "logged in with"; then ok "Grok: signed in"; have_ai=1
+  else warn "Grok CLI is installed but not signed in. Run: grok login"; fi
+else echo "  • Grok:    curl -fsSL https://x.ai/cli/install.sh | bash   then: grok login"; fi
 [ $have_ai = 1 ] || warn "Sign in to one of them before asking the tutor anything (SlideMate's setup screen can help)."
 echo
 if [ "${1:-}" = "--build-only" ]; then

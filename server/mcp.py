@@ -1,7 +1,8 @@
 """MCP (Model Context Protocol) support.
 
 Servers you add in Settings are used in two ways:
-  1. The tutor can call their tools while answering (Claude Code via --mcp-config, Codex via -c mcp_servers.*).
+  1. The tutor can call their tools while answering (Claude Code via --mcp-config, Codex via -c mcp_servers.*,
+     Cursor and Grok via config files in the session's own working folder).
   2. SlideMate itself can call a tool directly, e.g. a Blackboard/Canvas "sync" tool behind the Sync button.
 
 Config shape (config.json → "mcp_servers"):
@@ -81,6 +82,47 @@ def codex_args():
                 out += ["-c", f"{key}.env={_toml(s['env'])}"]
         out += ["-c", f'{key}.default_tools_approval_mode="approve"', "-c", f"{key}.startup_timeout_sec=60"]
     return out
+
+
+def cursor_files(folder, with_servers=True):
+    """Write .cursor/mcp.json + cli.json into a Cursor session's workspace: the tutor's MCP servers with their
+    tools allowed, and no shell or file writes (Cursor CLI reads both from the workspace it runs in)."""
+    srv = servers(tutor_only=True) if with_servers else {}
+    d = Path(folder) / ".cursor"
+    d.mkdir(parents=True, exist_ok=True)
+    cfg = {}
+    for name, s in srv.items():
+        if s.get("url"):
+            cfg[name] = {"url": s["url"], **({"headers": s["headers"]} if s.get("headers") else {})}
+        else:
+            cfg[name] = {"command": s["command"], "args": s.get("args", []), "env": s.get("env", {})}
+    (d / "mcp.json").write_text(json.dumps({"mcpServers": cfg}))
+    perms = {"allow": [f"Mcp({n}:*)" for n in srv], "deny": ["Shell(*)", "Write(**)"]}
+    (d / "cli.json").write_text(json.dumps({"permissions": perms}))
+    for f in (d / "mcp.json", d / "cli.json"):
+        os.chmod(f, 0o600)  # may hold MCP server credentials
+    return bool(srv)
+
+
+def grok_files(folder):
+    """Write .grok/config.toml into a Grok session's working folder with the tutor's MCP servers."""
+    lines = []
+    for name, s in servers(tutor_only=True).items():
+        lines.append(f"[mcp_servers.{name}]")
+        if s.get("url"):
+            lines.append(f"url = {_toml(s['url'])}")
+            if s.get("headers"):
+                lines.append(f"headers = {_toml(s['headers'])}")
+        else:
+            lines += [f"command = {_toml(s['command'])}", f"args = {_toml(s.get('args', []))}"]
+            if s.get("env"):
+                lines.append(f"env = {_toml(s['env'])}")
+        lines += ["startup_timeout_sec = 60", ""]
+    d = Path(folder) / ".grok"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "config.toml").write_text("\n".join(lines))
+    os.chmod(d / "config.toml", 0o600)
+    return bool(lines)
 
 
 # ------------------------------------------------------------------ a tiny stdio MCP client
@@ -309,7 +351,7 @@ def _from_json(path, key="mcpServers"):
 
 
 def _from_codex_toml(path):
-    """Read [mcp_servers.<name>] tables from Codex's config.toml (simple subset, no tomllib on Python 3.9)."""
+    """Read [mcp_servers.<name>] tables from a Codex/Grok config.toml (simple subset, no tomllib on Python 3.9)."""
     try:
         text = Path(path).expanduser().read_text()
     except Exception:
@@ -339,12 +381,14 @@ def _from_codex_toml(path):
 
 
 def discover():
-    """MCP servers already configured in Claude Desktop, Claude Code and Codex."""
+    """MCP servers already configured in Claude Desktop, Claude Code, Codex, Cursor and Grok."""
     found = {}
     sources = [
         ("Claude Desktop", _from_json("~/Library/Application Support/Claude/claude_desktop_config.json")),
         ("Claude Code", _from_json("~/.claude.json")),
         ("Codex", _from_codex_toml("~/.codex/config.toml")),
+        ("Cursor", _from_json("~/.cursor/mcp.json")),
+        ("Grok", _from_codex_toml("~/.grok/config.toml")),  # same [mcp_servers.<name>] tables as Codex
     ]
     for source, srvs in sources:
         for name, s in srvs.items():

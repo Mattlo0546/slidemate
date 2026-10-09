@@ -323,6 +323,10 @@ dialog .line label { flex: 1; margin-bottom: 0; }
 #ctxRing.warn .fg { stroke: #e5a50a; }
 #ctxRing.full .fg { stroke: #e5484d; }
 #modelMenu { min-width: 260px; }
+#modelMenu .mlist { max-height: min(46vh, 380px); overflow-y: auto; }
+#modelMenu .mfilter { display: block; width: calc(100% - 16px); margin: 2px 8px 6px; padding: 5px 8px; font: inherit; font-size: 12.5px;
+  color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; }
+#modelMenu .mrow[hidden] { display: none; }
 #modelMenu .mrow { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 10px; }
 #modelMenu .mrow b { font-weight: 500; font-size: 13px; display: flex; gap: 8px; width: 100%; }
 #modelMenu .mrow b .chk { margin-left: auto; color: var(--text); }

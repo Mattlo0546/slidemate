@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -113,7 +114,9 @@ def pick_folder():
 
 def status():
     cfg = config.load()
-    return {"providers": {n: p.status() for n, p in providers.PROVIDERS.items()}, "provider": cfg["provider"],
+    with ThreadPoolExecutor(len(providers.PROVIDERS)) as pool:  # each check runs a CLI, so do them at once
+        checks = {n: pool.submit(p.status) for n, p in providers.PROVIDERS.items()}
+    return {"providers": {n: f.result() for n, f in checks.items()}, "provider": cfg["provider"],
             "recording": lecture.tools_status(), "pdftools": bool(config.which("pdftotext")),
             "helper": bool(config.helper_app()), "data_dir": str(config.DATA)}
 
@@ -189,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
                                        "env_keys": sorted((s.get("env") or {}).keys()), "added": n in have}
                                    for n, s in mcp.discover().items()})
             if u.path == "/api/models":
-                return self._json(providers.catalogue())
+                return self._json(providers.catalogue(everything=bool(arg("all"))))
             if u.path == "/api/usage":
                 u_ = USAGE.get(arg("path")) or {}
                 return self._json({**u_, "limits": providers.LIMITS.get(config.load()["provider"], u_.get("limits", []))})

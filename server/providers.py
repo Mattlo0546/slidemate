@@ -2,6 +2,8 @@
 
 - "claude": Claude Code (`claude`) using your Claude subscription. Gets the full PDF natively (text + visuals).
 - "codex":  Codex CLI (`codex`) using "Sign in with ChatGPT". Gets the deck's text plus an image of your slide.
+- "cursor": Cursor CLI (`cursor-agent`) using your Cursor account. Gets the deck's text; opens the slide image itself.
+- "grok":   Grok CLI (`grok`) using your grok.com / SuperGrok account. Gets the deck's text plus an image of your slide.
 """
 import base64
 import glob
@@ -83,11 +85,16 @@ def codex_models():
     return out
 
 
-def catalogue():
+def catalogue(everything=False):
+    """Models + effort for each provider. Cursor's list is a network call, so it's only fetched when Cursor is in
+    use or Settings asks for every list."""
     cfg = config.load()
     return {"provider": cfg["provider"],
             "claude": {"models": CLAUDE_MODELS, "efforts": CLAUDE_EFFORTS, "model": cfg["claude_model"], "effort": cfg["claude_effort"]},
             "codex": {"models": codex_models(), "model": cfg["codex_model"], "effort": cfg["codex_effort"]},
+            "cursor": {"models": cursor_models(fetch=everything or cfg["provider"] == "cursor"), "efforts": [],
+                       "model": cfg["cursor_model"], "effort": ""},
+            "grok": {"models": grok_models(), "model": cfg["grok_model"], "effort": cfg["grok_effort"]},
             "limits": LIMITS.get(cfg["provider"], [])}
 
 
@@ -470,17 +477,18 @@ class Codex:
         return self.oneshot(f"FULL DECK TEXT (slide by slide):\n\n{deck}\n\n---\n\n{prompt}", model, timeout)
 
 
-class CodexSession:
-    """Codex keeps the conversation as a thread; the deck text goes in the first turn, follow-ups resume it."""
+class TurnSession:
+    """Base for CLIs that run once per question and resume the conversation by id (Codex, Cursor, Grok).
+    The deck goes in the first turn; follow-ups resume the CLI's own conversation."""
 
     def __init__(self, provider, pdf, model, effort=""):
         self.p, self.pdf, self.model, self.effort = provider, pdf, model, effort
         self.lock = threading.Lock()
-        self.thread = None
+        self.thread = None  # the CLI's conversation id
         self.proc = None
         self.cancelled = False
         self.last_used = time.time()
-        self.dir = config.WORK / f"codex-{uuid.uuid4().hex[:8]}"
+        self.dir = config.WORK / f"{provider.name}-{uuid.uuid4().hex[:8]}"
         self.dir.mkdir(parents=True, exist_ok=True)
 
     def close(self):
@@ -513,6 +521,18 @@ class CodexSession:
             self.last_used = time.time()
             self.lock.release()
 
+    def _first_parts(self, total, context):
+        """What the first turn carries: the tutor prompt, the whole deck as text, and earlier context."""
+        parts = [TUTOR_PROMPT, NO_SHELL if mcp.servers(tutor_only=True) else NO_TOOLS,
+                 f'FULL DECK TEXT of "{os.path.basename(self.pdf)}" ({total} slides):\n\n{deck_text(self.pdf)}']
+        if context:
+            parts.append(context)
+        return parts
+
+
+class CodexSession(TurnSession):
+    """Codex keeps the conversation as a thread; the deck text goes in the first turn, follow-ups resume it."""
+
     def _ask(self, question, page, total, image_b64, context):
         if True:
             images = []
@@ -520,12 +540,7 @@ class CodexSession:
                 img = self.dir / f"slide-{page}.jpg"
                 img.write_bytes(base64.b64decode(image_b64))
                 images.append(img)
-            parts = []
-            if not self.thread:
-                parts += [TUTOR_PROMPT, NO_SHELL if mcp.servers(tutor_only=True) else NO_TOOLS,
-                          f'FULL DECK TEXT of "{os.path.basename(self.pdf)}" ({total} slides):\n\n{deck_text(self.pdf)}']
-                if context:
-                    parts.append(context)
+            parts = [] if self.thread else self._first_parts(total, context)
             if images:
                 parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
             parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
@@ -578,7 +593,376 @@ class CodexSession:
                 "limits": LIMITS.get("codex", []), "at": time.time()}
 
 
-PROVIDERS = {"claude": Claude(), "codex": Codex()}
+# ------------------------------------------------------------------ shared: CLIs that print one JSON event per line
+
+
+def _json_events(cmd, cwd, timeout, stdin="", env=None, on_proc=None, last=()):
+    """Run a CLI, yield each JSON line it prints, then {"type": "_exit"} with the exit code and stderr tail.
+    After an event whose type is in `last`, the CLI gets a few seconds to exit before it's stopped."""
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            cwd=str(cwd), env=env or config.ENV, bufsize=1)
+    if on_proc:
+        on_proc(proc)
+    err = []
+
+    def drain():
+        for line in proc.stderr:
+            err.append(line)
+            del err[:-40]
+    threading.Thread(target=drain, daemon=True).start()
+    try:
+        proc.stdin.write(stdin)
+        proc.stdin.close()
+    except (BrokenPipeError, OSError):
+        pass
+    timer = threading.Timer(timeout, proc.kill)
+    timer.start()
+    try:
+        for line in proc.stdout:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(ev, dict):
+                yield ev
+                if ev.get("type") in last:
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    break
+        proc.wait()
+        yield {"type": "_exit", "code": proc.returncode, "stderr": "".join(err)[-600:]}
+    finally:
+        timer.cancel()
+
+
+def _say_cli_failed(name, ev):
+    tail = (ev.get("stderr") or "").strip()
+    return f"\n\n**{name} stopped unexpectedly.** Please ask again." + (f"\n\n`{tail[-400:]}`" if tail else "")
+
+
+# ------------------------------------------------------------------ Cursor CLI (Cursor account)
+
+
+MODEL_CACHE = {}  # provider → (time, models), for model lists that need a network call
+
+
+def cursor_models(fetch=True):
+    """`cursor-agent models` lists `id - Label` lines for this account. It's a network call, so cache it."""
+    at, models = MODEL_CACHE.get("cursor", (0, []))
+    if not fetch or (models and time.time() - at < 3600):
+        return models
+    b = Cursor.bin()
+    if not b:
+        return []
+    try:
+        out = subprocess.run([b, "models"], capture_output=True, text=True, timeout=45, env=config.ENV).stdout
+    except Exception:
+        return models
+    found = []
+    for line in out.splitlines():
+        m = re.match(r"^\s*([A-Za-z0-9][\w.\-\[\]=,]*)\s+-\s+(.+?)\s*$", re.sub(r"[​-‍﻿]", "", line))
+        if m and m.group(1) != "auto":  # "auto" is what Default (no --model) already means
+            found.append({"id": m.group(1), "label": re.sub(r"\s*\((current|default)[^)]*\)", "", m.group(2)).strip(),
+                          "desc": ""})
+    if found:
+        MODEL_CACHE["cursor"] = (time.time(), found)
+    return found or models
+
+
+class Cursor:
+    name = "cursor"
+    label = "Cursor"
+
+    @staticmethod
+    def bin():
+        return config.which("cursor-agent")
+
+    def status(self):
+        b = self.bin()
+        st = {"provider": self.name, "installed": bool(b), "logged_in": False,
+              "install": "curl https://cursor.com/install -fsS | bash", "login": "cursor-agent login"}
+        if b:
+            try:
+                p = subprocess.run([b, "status"], capture_output=True, text=True, timeout=30, env=config.ENV)
+                out = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", p.stdout + p.stderr).lower()
+                st["logged_in"] = "logged in" in out and "not logged in" not in out
+                st["detail"] = "Cursor account" if st["logged_in"] else ""
+            except Exception as e:
+                st["detail"] = str(e)[:200]
+        return st
+
+    def _cmd(self, folder, model=None, resume=None, tools=False):
+        cmd = [self.bin(), "-p", "--output-format", "stream-json", "--stream-partial-output", "--mode", "ask",
+               "--trust", "--workspace", str(folder)]
+        if tools:
+            cmd.append("--approve-mcps")
+        if model:
+            cmd += ["--model", model]
+        if resume:
+            cmd += ["--resume", resume]
+        return cmd  # the prompt goes on stdin, so a long deck never hits the argument-size limit
+
+    def session(self, pdf, model):
+        return CursorSession(self, pdf, model)
+
+    def oneshot(self, prompt, model=None, timeout=600):
+        folder = config.WORK / "cursor-oneshot"
+        folder.mkdir(parents=True, exist_ok=True)
+        mcp.cursor_files(folder, with_servers=False)
+        texts, errors = [], []
+        model = model if model is not None else config.load()["cursor_model"]
+        for ev in _json_events(self._cmd(folder, model or None), folder, timeout, NO_TOOLS + "\n\n" + prompt, last=("result",)):
+            if ev.get("type") == "result":
+                (errors if ev.get("is_error") else texts).append(ev.get("result") or "")
+            elif ev.get("type") == "_exit" and ev["code"]:
+                errors.append(ev["stderr"])
+        if not any(texts):
+            raise RuntimeError("Cursor returned nothing. " + " ".join(e for e in errors if e)[:400])
+        return texts[-1]
+
+    def oneshot_json(self, prompt, model=None, timeout=600):
+        return _json_from(self.oneshot(prompt, model, timeout))
+
+    def with_pdf(self, pdf, prompt, model=None, timeout=1800):
+        return self.oneshot(f"FULL DECK TEXT (slide by slide):\n\n{deck_text(pdf)}\n\n---\n\n{prompt}", model, timeout)
+
+
+def _cursor_tool_status(call):
+    kind, info = next(iter(call.items()), ("", {}))
+    args = (info or {}).get("args") or {}
+    if kind == "mcpToolCall":
+        return f"Using {args.get('providerIdentifier') or args.get('serverIdentifier', 'a tool')} › {args.get('toolName', '')}…"
+    if kind == "readToolCall" and os.path.basename(str(args.get("path", ""))).startswith("slide-"):
+        return "Looking at the slide…"
+    return None
+
+
+class CursorSession(TurnSession):
+    """Cursor CLI keeps the chat; the slide image is saved in the session's workspace for Cursor to open."""
+
+    def _ask(self, question, page, total, image_b64, context):
+        tools = mcp.cursor_files(self.dir)
+        parts = [] if self.thread else self._first_parts(total, context)
+        if image_b64:
+            name = f"slide-{page}.jpg"
+            (self.dir / name).write_bytes(base64.b64decode(image_b64))
+            parts.append(f"An image of slide {page} of {total}, which I'm looking at right now, is saved as `{name}` in "
+                         "your workspace. Open it with your file-reading tool before answering, so you can see its "
+                         "diagrams and equations.")
+        parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
+        streamed, said, gap, thinking, used = False, False, False, False, None
+        for ev in _json_events(self.p._cmd(self.dir, self.model or None, self.thread, tools), self.dir, 600,
+                               "\n\n".join(parts), on_proc=self._set_proc, last=("result",)):
+            if self.cancelled:
+                return
+            t = ev.get("type")
+            if ev.get("session_id") and t in ("system", "result"):
+                self.thread = ev["session_id"]
+            if t == "assistant" and ev.get("model_call_id"):
+                continue  # Cursor repeats each finished piece of text in one event: it's already been streamed
+            if t == "assistant":
+                text = "".join(c.get("text", "") for c in (ev.get("message") or {}).get("content", []) if c.get("type") == "text")
+                if "timestamp_ms" in ev:  # a streamed piece; the full message follows without a timestamp
+                    if text:
+                        yield ("\n\n" if gap and said else "") + text
+                        streamed, said, gap = True, True, False
+                elif not streamed and text:
+                    yield ("\n\n" if gap and said else "") + text
+                    said, gap = True, False
+                if "timestamp_ms" not in ev:
+                    streamed = False
+            elif t == "thinking" and not thinking:
+                thinking = True
+                yield ("status", "Thinking it through…")
+            elif t == "tool_call" and ev.get("subtype") == "started":
+                label = _cursor_tool_status(ev.get("tool_call") or {})
+                if label:
+                    yield ("status", label)
+                gap = True
+            elif t == "result":
+                if ev.get("is_error"):
+                    yield f"\n\n**Cursor error:** {ev.get('result') or ev.get('subtype')}"
+                u = ev.get("usage") or {}
+                used = sum(u.get(k) or 0 for k in ("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"))
+            elif t == "_exit" and ev["code"] and used is None:
+                self.thread = None  # start a fresh chat (with the deck and our chat history) next time
+                yield _say_cli_failed("Cursor", ev)
+        if used is not None:
+            yield ("usage", {"context_used": used, "context_window": None, "model": self.model or "auto",
+                             "limits": [], "at": time.time()})
+
+
+# ------------------------------------------------------------------ Grok CLI (grok.com account)
+
+
+EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+GROK_ARG_BUDGET = 700_000  # bytes of prompt we put on the command line (macOS allows ~1 MB in total)
+
+
+def grok_models():
+    try:
+        data = json.loads((config.HOME / ".grok" / "models_cache.json").read_text())
+    except Exception:
+        return []
+    out = []
+    for mid, m in (data.get("models") or {}).items():
+        info = m.get("info") or {}
+        if info.get("hidden"):
+            continue
+        out.append({"id": mid, "label": info.get("name") or mid, "desc": (info.get("description") or "")[:80],
+                    "context_window": info.get("context_window"),
+                    "efforts": sorted((e["id"] for e in info.get("reasoning_efforts") or [] if e.get("id")),
+                                      key=lambda e: EFFORT_ORDER.index(e) if e in EFFORT_ORDER else 99),
+                    "default_effort": info.get("reasoning_effort")})
+    return out
+
+
+class Grok:
+    name = "grok"
+    label = "Grok"
+
+    @staticmethod
+    def bin():
+        return config.which("grok")
+
+    def status(self):
+        b = self.bin()
+        st = {"provider": self.name, "installed": bool(b), "logged_in": False,
+              "install": "curl -fsSL https://x.ai/cli/install.sh | bash", "login": "grok login"}
+        if b:
+            try:
+                p = subprocess.run([b, "models"], capture_output=True, text=True, timeout=30, env=self.env())
+                out = (p.stdout + p.stderr).strip()
+                low = out.lower()
+                st["logged_in"] = p.returncode == 0 and "logged in" in low and "not logged in" not in low
+                m = re.search(r"logged in (?:with|as) (.+?)\.?$", out, re.I | re.M)
+                st["detail"] = m.group(1)[:200] if m and st["logged_in"] else ""
+            except Exception as e:
+                st["detail"] = str(e)[:200]
+        return st
+
+    @staticmethod
+    def env():
+        # SlideMate writes the MCP config into a scratch folder it owns, so Grok's folder-trust prompt doesn't
+        # apply; Grok's cross-session memory stays out of tutoring.
+        return {**config.ENV, "GROK_FOLDER_TRUST": "0", "GROK_MEMORY": "0", "GROK_DISABLE_AUTOUPDATER": "1"}
+
+    def _cmd(self, folder, model=None, effort="", resume=None, system=None, tools=False):
+        # No built-in tools (shell, files, edits); with tools=True, the MCP tools stay, reached via search/use_tool.
+        cmd = [self.bin(), "--cwd", str(folder), "--output-format", "streaming-json", "--no-auto-update",
+               "--disable-web-search", "--no-subagents", "--tools", "read_file",
+               "--disallowed-tools", "read_file" if tools else "read_file,search_tool,use_tool"]
+        if tools:
+            cmd += ["--allow", "MCPTool"]
+        if system:
+            cmd += ["--system-prompt-override", system]
+        if model:
+            cmd += ["-m", model]
+        if effort:
+            cmd += ["--effort", effort]
+        if resume:
+            cmd += ["--resume", resume]
+        return cmd
+
+    def session(self, pdf, model):
+        return GrokSession(self, pdf, model, config.load()["grok_effort"])
+
+    def oneshot(self, prompt, model=None, timeout=600):
+        folder = config.WORK / "grok-oneshot"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "prompt.md").write_text(prompt)
+        model = model if model is not None else config.load()["grok_model"]
+        cmd = self._cmd(folder, model or None, system=NO_TOOLS) + ["--prompt-file", str(folder / "prompt.md")]
+        texts, errors = [], []
+        for ev in _json_events(cmd, folder, timeout, env=self.env(), last=("end", "error")):
+            if ev.get("type") == "text":
+                texts.append(ev.get("data", ""))
+            elif ev.get("type") == "error":
+                errors.append(ev.get("message", ""))
+            elif ev.get("type") == "_exit" and ev["code"]:
+                errors.append(ev["stderr"])
+        if not "".join(texts).strip():
+            raise RuntimeError("Grok returned nothing. " + " ".join(e for e in errors if e)[:400])
+        return "".join(texts)
+
+    def oneshot_json(self, prompt, model=None, timeout=600):
+        return _json_from(self.oneshot(prompt, model, timeout))
+
+    def with_pdf(self, pdf, prompt, model=None, timeout=1800):
+        return self.oneshot(f"FULL DECK TEXT (slide by slide):\n\n{deck_text(pdf)}\n\n---\n\n{prompt}", model, timeout)
+
+
+def _grok_tool_status(ev):
+    if ev.get("toolName") == "use_tool":
+        name = (ev.get("rawInput") or {}).get("tool_name", "")
+        return f"Using {' › '.join(name.split('__', 1)) if name else 'a tool'}…"
+    if ev.get("toolName") == "search_tool":
+        return "Looking for the right tool…"
+    return None
+
+
+class GrokSession(TurnSession):
+    """Grok runs once per question and resumes its session; the slide image goes in as an image block."""
+
+    def _ask(self, question, page, total, image_b64, context):
+        tools = mcp.grok_files(self.dir)
+        parts = [] if self.thread else self._first_parts(total, context)[1:]  # the tutor prompt is the system prompt
+        if image_b64:
+            parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
+        parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
+        text = "\n\n".join(parts)
+        cmd = self.p._cmd(self.dir, self.model or None, self.effort, self.thread, TUTOR_PROMPT, tools)
+        if image_b64:
+            # Images only go in through --prompt-json (on the command line), so keep it under the size limit.
+            def payload(t):
+                return json.dumps([{"type": "image", "mimeType": "image/jpeg", "data": image_b64},
+                                   {"type": "text", "text": t}], ensure_ascii=False)
+            body, keep = text, len(text)
+            while len(payload(body).encode()) > GROK_ARG_BUDGET and keep > 0:
+                keep -= max(10_000, len(payload(body).encode()) - GROK_ARG_BUDGET)
+                body = text[:max(0, keep)] + "\n\n[…the rest of the deck text was cut to fit…]\n\n" + parts[-1]
+            cmd += ["--prompt-json", payload(body)]
+        else:
+            (self.dir / "prompt.md").write_text(text)
+            cmd += ["--prompt-file", str(self.dir / "prompt.md")]
+        streamed, gap, thinking, last, done = False, False, False, None, False
+        for ev in _json_events(cmd, self.dir, 600, env=self.p.env(), on_proc=self._set_proc, last=("end", "error")):
+            if self.cancelled:
+                return
+            t = ev.get("type")
+            if t == "text" and ev.get("data"):
+                yield ("\n\n" if gap and streamed else "") + ev["data"]
+                streamed, gap = True, False
+            elif t == "thought" and not thinking:
+                thinking = True
+                yield ("status", "Thinking it through…")
+            elif t == "tool_call":
+                label = _grok_tool_status(ev)
+                if label:
+                    yield ("status", label)
+                gap = True
+            elif t == "usage":
+                last = ev.get("usage") or last
+            elif t == "end":
+                done = True
+                self.thread = ev.get("sessionId") or self.thread
+            elif t == "error":
+                done = True
+                yield f"\n\n**Grok error:** {ev.get('message') or 'unknown error'}"
+            elif t == "_exit" and ev["code"] and not done:
+                self.thread = None  # start a fresh session (with the deck and our chat history) next time
+                yield _say_cli_failed("Grok", ev)
+        if last:
+            models = grok_models()  # Grok lists its default model first
+            m = next((x for x in models if x["id"] == self.model), models[0] if models else None)
+            used = sum(last.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"))
+            yield ("usage", {"context_used": used, "context_window": m and m.get("context_window"),
+                             "model": self.model or "default", "limits": [], "at": time.time()})
+
+
+PROVIDERS = {"claude": Claude(), "codex": Codex(), "cursor": Cursor(), "grok": Grok()}
 
 
 def current():
@@ -587,20 +971,21 @@ def current():
 
 def effort_for():
     cfg = config.load()
-    return cfg["codex_effort"] if cfg["provider"] == "codex" else cfg["claude_effort"]
+    return cfg.get(f"{current().name}_effort", "")
 
 
 def model_for(kind="chat"):
     cfg = config.load()
-    if cfg["provider"] == "codex":
-        return cfg["codex_model"] or None
-    return cfg["claude_notes_model"] if kind == "notes" else cfg["claude_model"]
+    name = current().name
+    if name == "claude":
+        return cfg["claude_notes_model"] if kind == "notes" else cfg["claude_model"]
+    return cfg.get(f"{name}_model") or None  # blank = that CLI's own default
 
 
 def open_login_terminal(name):
     """Sign-in flows are interactive, so run them in Terminal where the user can see them."""
-    p = PROVIDERS[name]
-    b = p.bin()
+    p = PROVIDERS.get(name)
+    b = p and p.bin()
     if not b:
         return False
     cmd = f"'{b}' auth login" if name == "claude" else f"'{b}' login"
