@@ -76,7 +76,8 @@ a single file. PDFs dropped onto the window get filed into the right course.
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
-- **MCP connections**: plug in your university's Blackboard or Canvas MCP server, and the tutor can check deadlines and
+- **MCP connections**: plug in your school's Blackboard, Canvas or
+  [Google Classroom](https://github.com/Mattlo0546/classroom-mcp) MCP server, and the tutor can check deadlines and
   announcements mid-answer. A **Pull** button syncs new slides automatically.
 - **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
 - **Private by design**: everything stays on your Mac. The only thing sent anywhere is your question to the AI provider you
@@ -178,6 +179,7 @@ System Settings → Privacy & Security → Accessibility. Without it, you click 
 
 ## MCP connections
 
+
 Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add server…* with a command and arguments
 (the same format as Claude Desktop's `mcpServers`).
 
@@ -190,6 +192,10 @@ Settings → **Connections (MCP)** → *Import from Claude / Codex…*, or *Add 
   `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Sync.
 - **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
   are never sent to the UI.
+
+**Google Classroom:** use [classroom-mcp](https://github.com/Mattlo0546/classroom-mcp) (one Python file, no dependencies).
+It adds a **Pull from Google Classroom** button that downloads class slides as PDFs, one folder per course, and lets
+the tutor see upcoming assignments and announcements.
 
 ## FAQ
 

@@ -21,7 +21,7 @@ Features:
 - Send to iPad: one click, or snip part of a slide; AirDrop with automatic iPad selection, plus clipboard copy.
 - Lecture notes: record in class; summary (key ideas, to-dos, deadlines, exam tips) plus per-slide notes with verbatim quotes and audio playback; or import Otter/Granola transcripts.
 - Viewer: ⌘F search across all slides, selectable text, pinch to zoom, chats saved per slide (also as Markdown for Obsidian).
-- Library: sorts course folders by course, type (lectures, labs, readings) and week; Blackboard/Canvas via MCP with a Pull button.
+- Library: sorts course folders by course, type (lectures, labs, readings) and week; Blackboard/Canvas via MCP with a Pull button. Google Classroom via https://github.com/Mattlo0546/classroom-mcp.
 
 ## Links
 - [README](https://github.com/Mattlo0546/slidemate#readme)
