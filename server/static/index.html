@@ -107,7 +107,7 @@
         <button id="findNext" class="ghost icon" title="Next (↩)"><svg><use href="#i-right"/></svg></button>
         <button id="findClose" class="ghost icon" title="Close (Esc)"><svg><use href="#i-minus"/></svg></button>
       </div>
-      <div id="snipLayer" hidden><div id="snipRect"></div><div id="snipHint">Drag over an area · Esc to cancel</div></div>
+      <div id="snipLayer" hidden><div id="snipRect"></div><div id="snipHint">Drag over a slide or the chat · Esc to cancel</div></div>
       <div id="snipMenu" class="menu row" hidden>
         <button data-snip="send" class="primary"><svg><use href="#i-send"/></svg>Send to iPad</button>
         <button data-snip="ask"><svg><use href="#i-sparkle"/></svg>Ask Claude</button>
@@ -118,6 +118,7 @@
 
   <aside id="chat">
     <div class="resizer" data-panel="chat" title="Drag to resize · double-click to reset"></div>
+    <div id="chatSnipLayer" hidden></div>
     <div id="chatHead">
       <div class="tabs" id="panelTabs">
         <button data-tab="chat" class="on"><svg><use href="#i-chat"/></svg>Chat</button>

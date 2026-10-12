@@ -238,9 +238,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         completionHandler(a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
     }
 
-    // Native folder picker for the setup screen: window.webkit.messageHandlers.slidemate.postMessage({action: "pickFolder"})
+    // Native helpers for the web UI: window.webkit.messageHandlers.slidemate.postMessage({action: …})
+    //   "pickFolder": folder picker for the setup screen
+    //   "snapshot":   screenshot of part of the window (snipping the chat), {x, y, w, h} in page pixels
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], body["action"] as? String == "pickFolder" else { return }
+        guard let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
+        if action == "snapshot" { return snapshot(body) }
+        guard action == "pickFolder" else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -253,6 +257,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             let value: Any = path.map { $0 as Any } ?? NSNull()
             let json = (try? JSONSerialization.data(withJSONObject: [value])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
             self?.web.evaluateJavaScript("window.__slidemateFolder && window.__slidemateFolder(\(json)[0])")
+        }
+    }
+
+    func snapshot(_ body: [String: Any]) {
+        let num = { (k: String) in CGFloat((body[k] as? NSNumber)?.doubleValue ?? 0) }
+        let cfg = WKSnapshotConfiguration()
+        cfg.rect = CGRect(x: num("x"), y: num("y"), width: num("w"), height: num("h"))
+        cfg.afterScreenUpdates = true
+        web.takeSnapshot(with: cfg) { [weak self] image, _ in
+            var url = "null"
+            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+               let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                url = "\"data:image/png;base64,\(png.base64EncodedString())\""
+            }
+            self?.web.evaluateJavaScript("window.__slidemateSnapshot && window.__slidemateSnapshot(\(url))")
         }
     }
 

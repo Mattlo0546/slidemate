@@ -35,7 +35,7 @@ your lecturer actually said. Slide references like "slide 4" are links: hover to
 <td width="50%" valign="top">
 
 ### 📲 Snip → iPad in one click
-Drag over any part of a slide and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
+Drag over any part of a slide, or over the chat to grab the tutor's notes, and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
 copied to your clipboard, ready for GoodNotes or Notability.
 
 </td>

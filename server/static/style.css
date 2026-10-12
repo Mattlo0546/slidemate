@@ -129,7 +129,8 @@ body:not(.lib-hidden) #btnLibrary { display: none; }
 #empty h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
 #empty p { margin: 0 0 16px; max-width: 360px; }
 body.has-doc #empty { display: none; }
-#snipLayer { position: absolute; inset: 0; cursor: crosshair; background: rgba(0,0,0,.18); z-index: 5; }
+#snipLayer, #chatSnipLayer { position: absolute; inset: 0; cursor: crosshair; background: rgba(0,0,0,.18); z-index: 5; }
+#chatSnipLayer { z-index: 25; }  /* above the resizer */
 #snipRect { position: absolute; border: 1.5px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.25); border-radius: 4px; display: none; }
 #snipHint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: var(--raise); padding: 6px 14px; border-radius: 999px; box-shadow: var(--shadow); font-size: 12.5px; }
 

@@ -557,15 +557,15 @@ async function sendSlide(n = state.current) {
 }
 $('#btnSend').onclick = () => sendSlide();
 
-// ---------- snip ----------
-const snipLayer = $('#snipLayer'), snipRect = $('#snipRect'), snipMenu = $('#snipMenu');
+// ---------- snip (a slide area, or part of the chat panel) ----------
+const snipLayer = $('#snipLayer'), chatSnipLayer = $('#chatSnipLayer'), snipRect = $('#snipRect'), snipMenu = $('#snipMenu');
 let snip = null, pendingSnip = null;
 function startSnip() {
   if (!state.pdf) return;
   hideMenus();
-  snipLayer.hidden = false; snipRect.style.display = 'none'; snip = null;
+  snipLayer.hidden = chatSnipLayer.hidden = false; snipRect.style.display = 'none'; snip = null;
 }
-function endSnip() { snipLayer.hidden = true; snipMenu.hidden = true; snip = null; }
+function endSnip() { snipLayer.hidden = chatSnipLayer.hidden = true; snipMenu.hidden = true; snip = null; }
 $('#btnSnip').onclick = startSnip;
 snipLayer.addEventListener('mousedown', (e) => {
   snipMenu.hidden = true;
@@ -573,8 +573,18 @@ snipLayer.addEventListener('mousedown', (e) => {
   const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.page');
   snipLayer.style.pointerEvents = '';
   if (!el) return;
+  snipLayer.append(snipRect);
+  $('#viewerWrap').append(snipMenu);
   const wrap = $('#viewerWrap').getBoundingClientRect();
-  snip = { page: +el.dataset.page, pr: el.getBoundingClientRect(), x0: e.clientX, y0: e.clientY, wrap };
+  snip = { kind: 'slide', page: +el.dataset.page, pr: el.getBoundingClientRect(), x0: e.clientX, y0: e.clientY, wrap };
+  Object.assign(snipRect.style, { display: 'block', left: e.clientX - wrap.left + 'px', top: e.clientY - wrap.top + 'px', width: 0, height: 0 });
+});
+chatSnipLayer.addEventListener('mousedown', (e) => {
+  snipMenu.hidden = true;
+  chatSnipLayer.append(snipRect);
+  $('#chat').append(snipMenu);
+  const wrap = $('#chat').getBoundingClientRect();
+  snip = { kind: 'chat', pr: wrap, x0: e.clientX, y0: e.clientY, wrap };
   Object.assign(snipRect.style, { display: 'block', left: e.clientX - wrap.left + 'px', top: e.clientY - wrap.top + 'px', width: 0, height: 0 });
 });
 window.addEventListener('mousemove', (e) => {
@@ -596,6 +606,7 @@ window.addEventListener('mouseup', () => {
     x: (Math.min(snip.x0, snip.x1) - pr.left) / pr.width, y: (Math.min(snip.y0, snip.y1) - pr.top) / pr.height,
     w: Math.abs(snip.x1 - snip.x0) / pr.width, h: Math.abs(snip.y1 - snip.y0) / pr.height,
   };
+  snipMenu.querySelector('[data-snip="ask"]').hidden = snip.kind === 'chat';
   snipMenu.hidden = false;
   snipMenu.style.left = Math.max(8, Math.min(Math.max(snip.x0, snip.x1) - wrap.left - snipMenu.offsetWidth, wrap.width - snipMenu.offsetWidth - 8)) + 'px';
   snipMenu.style.top = Math.min(Math.max(snip.y0, snip.y1) - wrap.top + 8, wrap.height - 50) + 'px';
@@ -604,8 +615,14 @@ snipMenu.addEventListener('mousedown', (e) => e.stopPropagation());
 snipMenu.addEventListener('click', async (e) => {
   const act = e.target.closest('button')?.dataset.snip;
   if (!act || !snip) return;
-  const { page, crop } = snip;
+  const { kind, page, crop, x0, y0, x1, y1 } = snip;
   endSnip();
+  if (kind === 'chat') {
+    if (act !== 'send') return;
+    const img = await snapshotRegion(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+    if (img) sendToIpad(img, `${state.name} chat snip`);
+    return;
+  }
   if (act === 'send') sendToIpad(await renderImage(page, { crop, width: 2000 }), `${state.name} p${page} snip`);
   if (act === 'ask') {
     pendingSnip = { page, img: await renderImage(page, { crop, width: 1200, type: 'image/jpeg', quality: 0.88 }) };
@@ -614,6 +631,20 @@ snipMenu.addEventListener('click', async (e) => {
     $('#askInput').focus();
   }
 });
+
+// The chat isn't a PDF we can re-render, so a chat snip is a screenshot of that part of the window, taken by the Mac app.
+async function snapshotRegion(x, y, w, h) {
+  const native = window.webkit?.messageHandlers?.slidemate;
+  if (!native) { toast('Snipping the chat works in the SlideMate app', true); return null; }
+  await new Promise((ok) => setTimeout(ok, 60));  // let the snip overlay disappear first (the app waits for the repaint)
+  const img = await new Promise((done) => {
+    const timer = setTimeout(() => done(null), 8000);
+    window.__slidemateSnapshot = (url) => { clearTimeout(timer); done(url); };
+    native.postMessage({ action: 'snapshot', x, y, w, h });
+  });
+  if (!img) toast("Couldn't capture that part of the chat", true);
+  return img;
+}
 
 // ---------- slide context menu ----------
 const ctx = $('#ctxMenu');
