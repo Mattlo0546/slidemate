@@ -35,6 +35,8 @@
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
     <symbol id="i-notes" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
     <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.3-2.4l7.9-7.9"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
   </defs>
 </svg>
@@ -146,6 +148,9 @@
         <button data-q="Quiz me with 3 short questions on this slide, then wait for my answers.">Quiz me</button>
       </div>
       <form id="askForm">
+        <div id="attachTray" hidden></div>
+        <button class="attach" type="button" id="btnAttach" title="Attach pictures, e.g. photos of your handwritten notes (or drop / paste them here)"><svg><use href="#i-clip"/></svg></button>
+        <input type="file" id="attachInput" accept="image/*,.heic,.heif" multiple hidden>
         <textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea>
         <button class="send" type="submit" title="Send (Enter)"><svg><use href="#i-up"/></svg></button>
       </form>
@@ -334,7 +339,8 @@
 </dialog>
 
 <div id="toasts"></div>
-<div id="dropOverlay" hidden><div>Drop PDF: it'll be filed into the right course</div></div>
+<dialog id="picView"><img id="picViewImg" alt="Attached picture"></dialog>
+<div id="dropOverlay" hidden><div id="dropMsg">Drop PDF: it'll be filed into the right course</div></div>
 
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/katex/katex.min.js"></script>

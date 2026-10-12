@@ -610,7 +610,7 @@ snipMenu.addEventListener('click', async (e) => {
   if (act === 'ask') {
     pendingSnip = { page, img: await renderImage(page, { crop, width: 1200, type: 'image/jpeg', quality: 0.88 }) };
     showChat();
-    $('#askInput').placeholder = `Ask about the snipped area of slide ${page}`;
+    updatePlaceholder();
     $('#askInput').focus();
   }
 });
@@ -817,15 +817,117 @@ function msgEl(m) {
     d.innerHTML = `<button class="slide-tag" data-goto="${m.slide}">Slide ${m.slide}${m.snip ? ' · snip' : ''}</button><div class="q"></div>`;
     d.querySelector('.q').textContent = m.text;
     if (m.image) { const i = new Image(); i.src = m.image; d.append(i); }
+    if (m.images?.length) {
+      const pics = document.createElement('div');
+      pics.className = 'pics';
+      for (const src of m.images) {
+        const i = new Image();
+        i.alt = 'Attached picture';
+        if (src.startsWith('data:')) i.src = src;
+        else chatPic(src).then((u) => { i.src = u; }, () => i.remove());
+        pics.append(i);
+      }
+      d.append(pics);
+    }
   } else d.innerHTML = mdRender(m.text || '');
   return d;
 }
-$('#messages').addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) { state.keepAllUntil = performance.now() + 1500; goTo(+g.dataset.goto); } });
+$('#messages').addEventListener('click', (e) => {
+  const g = e.target.closest('[data-goto]');
+  if (g) { state.keepAllUntil = performance.now() + 1500; return goTo(+g.dataset.goto); }
+  const pic = e.target.closest('.pics img');
+  if (pic?.src) { $('#picViewImg').src = pic.src; $('#picView').showModal(); }
+});
+// Saved pictures need the X-SlideMate header, so fetch them and show as blob URLs.
+const picCache = new Map();
+function chatPic(name) {
+  if (!picCache.has(name)) {
+    picCache.set(name, api('/api/chat-image?name=' + encodeURIComponent(name))
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('missing'))))
+      .then((b) => URL.createObjectURL(b)));
+  }
+  return picCache.get(name);
+}
+$('#picView').addEventListener('click', () => $('#picView').close());
+
+// ---------- attached pictures (e.g. photos of handwritten notes): drop, paste or 📎 ----------
+const MAX_PICS = 10;
+let pendingPics = [];  // [{id, name, url (JPEG data URL once read), ready (Promise)}]
+const isImageFile = (f) => f.type.startsWith('image/') || /\.(heic|heif|png|jpe?g|gif|webp|tiff?|bmp)$/i.test(f.name);
+
+// Downscale to what the AI actually looks at (~1568px long side), so big phone photos upload fast.
+async function downscale(file, maxSide = 1568) {
+  const bmp = await createImageBitmap(file);  // throws for formats the web view can't decode
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';  // transparent PNGs become white, not black
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  return c.toDataURL('image/jpeg', 0.88);
+}
+async function readPicture(file) {
+  try { return await downscale(file); } catch {}
+  const r = await (await api('/api/convert-image', { method: 'POST', body: file })).json();  // macOS converts it
+  if (r.error) throw new Error(r.error);
+  return r.image;
+}
+
+function addPictures(files) {
+  const imgs = [...files].filter(isImageFile);
+  if (!imgs.length) return;
+  if (!state.pdf) return toast('Open the lecture slides first, then add your pictures', true);
+  const room = MAX_PICS - pendingPics.length;
+  if (room <= 0) return toast(`Up to ${MAX_PICS} pictures per question`, true);
+  if (imgs.length > room) toast(`Attached the first ${room}: max ${MAX_PICS} pictures per question`, true);
+  if (panelTab !== 'chat') setPanelTab('chat');
+  showChat();
+  for (const f of imgs.slice(0, room)) {
+    const pic = { id: Math.random().toString(36).slice(2), name: f.name, url: null };
+    pic.ready = readPicture(f)
+      .then((u) => { pic.url = u; })
+      .catch((e) => { toast(`Couldn't read ${f.name}: ${e.message}`, true); pendingPics = pendingPics.filter((p) => p !== pic); })
+      .finally(renderTray);
+    pendingPics.push(pic);
+  }
+  renderTray();
+  $('#askInput').focus();
+}
+function renderTray() {
+  const tray = $('#attachTray');
+  tray.hidden = !pendingPics.length;
+  tray.innerHTML = pendingPics.map((p) => `<div class="att${p.url ? '' : ' loading'}" title="${esc(p.name)}">
+    ${p.url ? `<img src="${p.url}" alt="">` : ''}<button type="button" data-rm="${p.id}" title="Remove">${icon('x')}</button></div>`).join('');
+  updatePlaceholder();
+}
+function updatePlaceholder() {
+  const n = pendingPics.length;
+  $('#askInput').placeholder = pendingSnip ? `Ask about the snipped area of slide ${pendingSnip.page}`
+    : n ? `Ask about your picture${n > 1 ? 's' : ''}` : 'Ask about this slide';
+}
+$('#attachTray').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rm]');
+  if (b) { pendingPics = pendingPics.filter((p) => p.id !== b.dataset.rm); renderTray(); }
+});
+$('#btnAttach').onclick = () => $('#attachInput').click();
+$('#attachInput').addEventListener('change', (e) => { addPictures(e.target.files); e.target.value = ''; });
+$('#askInput').addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.some(isImageFile)) { e.preventDefault(); addPictures(files); }
+});
+
 $('#messages').addEventListener('copy', copyCleanMath);
 $('#notesPane').addEventListener('copy', copyCleanMath);
 
 async function ask(question) {
-  if (!state.pdf || !question.trim()) return;
+  if (!state.pdf) return;
+  if (!question.trim()) {
+    if (!pendingPics.length) return;
+    question = 'Read my notes in the attached picture' + (pendingPics.length > 1 ? 's' : '') + ' and help me understand them.';
+  }
   if (state.busy) return toast('Still answering. Press ■ Stop (or Esc) to cancel it.');
   state.busy = true;
   state.abort = new AbortController();
@@ -851,14 +953,18 @@ async function askInner(question) {
   showChat();
   const path = state.path, total = state.pdf.numPages;
   const snipNow = pendingSnip;
+  const picsNow = pendingPics;
   pendingSnip = null;
-  $('#askInput').placeholder = 'Ask about this slide';
+  pendingPics = [];
+  renderTray();
+  await Promise.all(picsNow.map((p) => p.ready));
+  const attachments = picsNow.filter((p) => p.url).map((p) => p.url);
   const page = snipNow?.page || state.current;
   const image = snipNow ? snipNow.img : await renderImage(page, { width: 1400, type: 'image/jpeg', quality: 0.85 });
   const fullQ = snipNow ? `(The attached image is a snipped area of slide ${page}, not the whole slide.)\n\n${question}` : question;
   if (state.chatMode === 'slide' && page !== state.current) setChatMode('all');
   const msgs = chatFor(path);
-  msgs.push({ role: 'user', text: question, slide: page, ts: Date.now() / 1000, snip: !!snipNow, image: snipNow?.img });
+  msgs.push({ role: 'user', text: question, slide: page, ts: Date.now() / 1000, snip: !!snipNow, image: snipNow?.img, images: attachments });
   const bot = { role: 'bot', text: '', slide: page, ts: Date.now() / 1000 };
   msgs.push(bot);
   renderChat();
@@ -871,7 +977,7 @@ async function askInner(question) {
   }, 1000);
   state.stopping = false;
   try {
-    const res = await api('/api/chat', { method: 'POST', signal: state.abort?.signal, body: JSON.stringify({ path, page, total, question: fullQ, display: question, snip: !!snipNow, image }) });
+    const res = await api('/api/chat', { method: 'POST', signal: state.abort?.signal, body: JSON.stringify({ path, page, total, question: fullQ, display: question, snip: !!snipNow, image, attachments }) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '', raf = 0;
@@ -943,7 +1049,7 @@ const autosize = () => {
 $('#askInput').addEventListener('input', autosize);
 $('#askInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#askForm').requestSubmit(); }
-  if (e.key === 'Escape') { pendingSnip = null; e.target.placeholder = 'Ask about this slide'; e.target.blur(); }
+  if (e.key === 'Escape') { pendingSnip = null; updatePlaceholder(); e.target.blur(); }
 });
 $('#chips').addEventListener('click', (e) => { if (e.target.dataset.q) ask(e.target.dataset.q); });
 $('#btnReset').onclick = async () => {
@@ -1381,13 +1487,29 @@ window.addEventListener('keydown', (e) => {
 });
 
 let dragDepth = 0;
-window.addEventListener('dragenter', (e) => { if (e.dataTransfer?.types.includes('Files')) { dragDepth++; $('#dropOverlay').hidden = false; } });
+function dropMessage(dt) {
+  const types = [...(dt.items || [])].filter((i) => i.kind === 'file').map((i) => i.type);
+  const pdf = types.some((t) => t === 'application/pdf'), img = types.some((t) => t.startsWith('image/'));
+  if (img && !pdf) return 'Drop pictures to ask about them';
+  if (pdf && !img) return "Drop PDF: it'll be filed into the right course";
+  return 'Drop pictures to ask about them · PDFs get filed into your library';
+}
+window.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  if (!dragDepth++) $('#dropMsg').textContent = dropMessage(e.dataTransfer);
+  $('#dropOverlay').hidden = false;
+});
 window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dropOverlay').hidden = true; } });
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', async (e) => {
   e.preventDefault(); dragDepth = 0; $('#dropOverlay').hidden = true;
-  const f = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.pdf'));
-  if (!f) return toast('That is not a PDF', true);
+  const files = [...e.dataTransfer.files];
+  if (files.some(isImageFile)) {
+    if (files.some((f) => f.name.toLowerCase().endsWith('.pdf'))) toast('Attached the pictures. Drop PDFs on their own to file them.', false, 5000);
+    return addPictures(files);
+  }
+  const f = files.find((f) => f.name.toLowerCase().endsWith('.pdf'));
+  if (!f) return toast('Drop a PDF or a picture', true);
   toast('Filing into your library…', false, 6000);
   const r = await (await api('/api/upload', { method: 'POST', headers: { 'X-Filename': encodeURIComponent(f.name) }, body: f })).json();
   if (r.error) return toast(r.error, true);

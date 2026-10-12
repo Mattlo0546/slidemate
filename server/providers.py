@@ -33,6 +33,9 @@ How to answer:
   lecturer is most likely saying.
 - Use short paragraphs, bullets and worked examples where useful. Use LaTeX with $...$ / $$...$$ for maths.
 - Be concise by default; go deeper when asked. Don't repeat the slide text back verbatim.
+- The student may attach their own pictures, often photos of handwritten lecture notes. Read them carefully
+  (handwriting, arrows, sketches, crossed-out bits), briefly say what you read wherever it's ambiguous, then explain
+  the ideas and tie them to the relevant slides. Gently point out anything in the notes that looks wrong.
 - You may have tools connected to the student's accounts (e.g. their university VLE). Use them when a question needs
   live information — deadlines, announcements, other course materials — and say briefly what you looked up.
   Otherwise answer from the deck.
@@ -191,6 +194,11 @@ class Claude:
         raise RuntimeError("Claude returned nothing: " + p.stderr[-400:])
 
 
+def _pictures_intro(n):
+    return (f"I've attached {n} picture{'s' if n > 1 else ''} of my own (e.g. my handwritten notes from the lecture). "
+            "These are not slides from the deck")
+
+
 def _claude_deck_blocks(pdf):
     name = os.path.basename(pdf)
     pages = page_count(pdf)
@@ -260,7 +268,8 @@ class ClaudeSession:
         threading.Thread(target=pump_err, daemon=True).start()
         self.proc, self.q, self.primed = proc, q, False
 
-    def ask(self, question, page, total, image_b64, context=""):
+    def ask(self, question, page, total, image_b64, context="", attachments=()):
+        """`attachments`: the student's own pictures as (media_type, b64) pairs."""
         # A previous answer that nobody is waiting for any more (page reloaded, deck switched) must not
         # block this one: cancel it and take over.
         if not self.lock.acquire(timeout=1):
@@ -281,6 +290,12 @@ class ClaudeSession:
             if image_b64:
                 content.append({"type": "text", "text": f"Here is slide {page} of {total}, which I'm looking at right now:"})
                 content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}})
+            for i, (media_type, data) in enumerate(attachments):
+                if i == 0:
+                    content.append({"type": "text", "text": _pictures_intro(len(attachments)) + ":"})
+                if len(attachments) > 1:
+                    content.append({"type": "text", "text": f"Picture {i + 1}:"})
+                content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
             content.append({"type": "text", "text": f"[I'm currently on slide {page} of {total}.]\n\n{question}"})
             try:
                 self.proc.stdin.write(json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n")
@@ -498,7 +513,7 @@ class CodexSession:
     def _set_proc(self, proc):
         self.proc = proc
 
-    def ask(self, question, page, total, image_b64, context=""):
+    def ask(self, question, page, total, image_b64, context="", attachments=()):
         if not self.lock.acquire(timeout=1):  # an abandoned answer is still running: stop it and take over
             self.cancel()
             if not self.lock.acquire(timeout=10):
@@ -507,18 +522,22 @@ class CodexSession:
         try:
             self.cancelled = False
             self.last_used = time.time()
-            yield from self._ask(question, page, total, image_b64, context)
+            yield from self._ask(question, page, total, image_b64, context, attachments)
         finally:
             self.proc = None
             self.last_used = time.time()
             self.lock.release()
 
-    def _ask(self, question, page, total, image_b64, context):
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
         if True:
             images = []
             if image_b64:
                 img = self.dir / f"slide-{page}.jpg"
                 img.write_bytes(base64.b64decode(image_b64))
+                images.append(img)
+            for i, (media_type, data) in enumerate(attachments, 1):
+                img = self.dir / f"picture-{i}.{media_type.split('/')[1]}"
+                img.write_bytes(base64.b64decode(data))
                 images.append(img)
             parts = []
             if not self.thread:
@@ -526,8 +545,12 @@ class CodexSession:
                           f'FULL DECK TEXT of "{os.path.basename(self.pdf)}" ({total} slides):\n\n{deck_text(self.pdf)}']
                 if context:
                     parts.append(context)
-            if images:
-                parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
+            if image_b64:
+                parts.append(f"The first attached image is slide {page} of {total}, which I'm looking at right now.")
+            if attachments:
+                n = len(attachments)
+                where = f"the last {n} attached images" if n > 1 else "the last attached image"
+                parts.append(f"{_pictures_intro(n)}: they're {where}.")
             parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
             first = True
             got = False

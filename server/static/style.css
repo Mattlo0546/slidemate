@@ -179,7 +179,7 @@ body.chat-hidden #chat { display: none; }
 #composer { padding: 0 12px 10px; }
 #chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 8px; }
 #chips button { font-size: 12px; padding: 3px 10px; background: transparent; color: var(--text-2); }
-#askForm { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--border-strong); border-radius: 22px; padding: 6px 6px 6px 14px; background: var(--raise); box-shadow: 0 1px 6px rgba(0,0,0,.04); }
+#askForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; border: 1px solid var(--border-strong); border-radius: 22px; padding: 6px; background: var(--raise); box-shadow: 0 1px 6px rgba(0,0,0,.04); }
 #askForm:focus-within { border-color: var(--ring); }
 #askInput { flex: 1; resize: none; border: 0; outline: none; background: none; padding: 5px 0; max-height: 180px; line-height: 1.45; overflow-y: hidden; box-sizing: content-box; min-height: 1.45em; }
 /* With ⌘+ text zoom, WebKit draws a horizontal scrollbar in the box even though text wraps: never scroll sideways. */
@@ -189,6 +189,17 @@ body.chat-hidden #chat { display: none; }
 #askInput::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 #askForm .send { width: 30px; height: 30px; padding: 0; justify-content: center; background: var(--primary); color: var(--primary-ink); border: 0; }
 #askForm .send:hover { opacity: .85; }
+#askForm .attach { width: 30px; height: 30px; padding: 0; justify-content: center; border: 0; background: none; color: var(--muted); }
+#askForm .attach:hover { background: var(--hover); color: var(--text); }
+#attachTray { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 0; }
+#attachTray .att { position: relative; width: 58px; height: 58px; border-radius: 10px; overflow: hidden; background: var(--hover); box-shadow: 0 0 0 1px var(--border); }
+#attachTray .att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#attachTray .att.loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--hover), transparent); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+#attachTray .att button { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0; justify-content: center; border: 0; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; opacity: 0; }
+#attachTray .att:hover button, #attachTray .att button:focus-visible { opacity: 1; }
+#attachTray .att button svg { width: 11px; height: 11px; stroke-width: 2.4; }
+.msg.user .pics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.msg.user .pics img { margin-top: 0; max-height: 220px; width: auto; max-width: 100%; cursor: zoom-in; background: var(--raise); }
 #chatCtx { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- dialog ---------- */
@@ -461,3 +472,5 @@ a.slide-ref:hover { background: var(--hover); text-decoration-color: currentColo
 
 #settings .num-unit { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); flex-shrink: 0; }
 #settings .num-unit input { width: 76px; text-align: right; }
+#picView { padding: 0; border: 0; background: none; width: auto; box-shadow: none; max-width: 92vw; max-height: 92vh; cursor: zoom-out; }
+#picView img { display: block; max-width: 92vw; max-height: 92vh; border-radius: 10px; }

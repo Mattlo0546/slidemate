@@ -3,6 +3,7 @@
 // On launch it starts `server/server.py` (bundled in Contents/Resources) with the system Python 3,
 // waits for it to answer, then shows the UI in a WKWebView. Quitting the app stops the server.
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 
 let port = ProcessInfo.processInfo.environment["SLIDEMATE_PORT"] ?? "8767"
@@ -200,6 +201,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             return decisionHandler(.cancel)
         }
         decisionHandler(.allow)
+    }
+
+    // <input type="file"> does nothing in WKWebView unless the app shows the panel. The only one is
+    // "attach pictures" in the chat, so the panel offers images.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.message = "Choose pictures to ask about, e.g. photos of your handwritten notes"
+        guard let w = webView.window else { return completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
+        panel.beginSheetModal(for: w) { r in completionHandler(r == .OK ? panel.urls : nil) }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

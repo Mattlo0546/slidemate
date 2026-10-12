@@ -429,7 +429,10 @@ def _write_markdown(path, chat):
         for m in by_slide[slide]:
             when = time.strftime("%Y-%m-%d %H:%M", time.localtime(m.get("ts", 0)))
             if m["role"] == "user":
-                out += [f"**You** ({when}{', about a snipped area' if m.get('snip') else ''}):", "",
+                extra = ", about a snipped area" if m.get("snip") else ""
+                if m.get("images"):
+                    extra += f", with {len(m['images'])} attached picture{'s' if len(m['images']) > 1 else ''}"
+                out += [f"**You** ({when}{extra}):", "",
                         "> " + m["text"].replace("\n", "\n> "), ""]
             else:
                 out += ["**Tutor:**", "", m["text"], ""]

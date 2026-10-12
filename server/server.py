@@ -5,6 +5,7 @@ Standard library only (Python 3.9+). Listens on 127.0.0.1 only. Run it directly 
     python3 server/server.py          # then open http://127.0.0.1:8767
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -50,9 +51,49 @@ def tutor_context(path):
                      "questions about the lecture):\n\n" + notes)
     msgs = lib.load_chat(path)["messages"][-40:]
     if msgs:
-        lines = [f"[slide {m.get('slide')}] {'Student' if m['role'] == 'user' else 'You'}: {m['text']}" for m in msgs]
+        lines = [f"[slide {m.get('slide')}] {'Student' if m['role'] == 'user' else 'You'}: {m['text']}"
+                 + (f" [attached {len(m['images'])} picture(s), not re-sent]" if m.get("images") else "") for m in msgs]
         parts.append("Our earlier conversation about this deck (for continuity; don't repeat it):\n\n" + "\n\n".join(lines)[-60000:])
     return "\n\n---\n\n".join(parts)
+
+
+# ------------------------------------------------------------------ pictures attached to chat questions
+
+IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+MAX_ATTACHMENTS = 10
+
+
+def parse_data_url(url):
+    """'data:image/jpeg;base64,...' -> (media_type, b64), or None if it isn't an image the AIs accept."""
+    m = re.match(r"data:([\w/+.-]+);base64,(.+)", url or "", re.S)
+    return (m.group(1), m.group(2)) if m and m.group(1) in IMAGE_TYPES else None
+
+
+def to_jpeg(raw, max_side=1568):
+    """Any image macOS can read (HEIC from an iPhone, TIFF, ...) -> JPEG bytes with the longest side capped."""
+    with tempfile.TemporaryDirectory(dir=config.WORK) as tmp:
+        src, out = Path(tmp) / "in", Path(tmp) / "out.jpg"
+        src.write_bytes(raw)
+        info = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(src)],
+                              capture_output=True, text=True, timeout=30).stdout
+        dims = [int(x) for x in re.findall(r"pixel(?:Width|Height):\s*(\d+)", info)]
+        if not dims:
+            return None
+        cmd = ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "85"]
+        if max(dims) > max_side:
+            cmd += ["-Z", str(max_side)]
+        subprocess.run(cmd + [str(src), "--out", str(out)], capture_output=True, timeout=60)
+        return out.read_bytes() if out.exists() else None
+
+
+def save_chat_image(media_type, b64):
+    """Store an attached picture once (content-addressed) so the chat history can show it again."""
+    raw = base64.b64decode(b64)
+    name = hashlib.sha1(raw).hexdigest()[:20] + IMAGE_TYPES[media_type]
+    f = config.CHAT_IMAGES / name
+    if not f.exists():
+        f.write_bytes(raw)
+    return name
 
 
 # ------------------------------------------------------------------ send to iPad
@@ -121,7 +162,8 @@ def status():
 # ------------------------------------------------------------------ HTTP
 
 MIME = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
-        ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".png": "image/png", ".svg": "image/svg+xml",
+        ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif",
+        ".webp": "image/webp", ".svg": "image/svg+xml",
         ".json": "application/json"}
 
 
@@ -199,6 +241,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"trusted": helper_trust(False)})
             if u.path == "/api/chat-history":
                 return self._json(lib.load_chat(arg("path")))
+            if u.path == "/api/chat-image":
+                name = arg("name")
+                f = config.CHAT_IMAGES / name
+                if not re.fullmatch(r"[0-9a-f]{20}\.(jpg|png|gif|webp)", name) or not f.is_file():
+                    return self._json({"error": "not found"}, 404)
+                return self._file(f, MIME[f.suffix])
             if u.path == "/api/lectures":
                 return self._json(lecture.list_for_deck(arg("path")))
             if u.path == "/api/lecture":
@@ -254,6 +302,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if u.path == "/api/upload":
             return self._upload()
+        if u.path == "/api/convert-image":
+            # For pictures the web view can't decode itself.
+            try:
+                jpg = to_jpeg(self._body())
+            except Exception as e:
+                print("convert-image failed", e, flush=True)
+                jpg = None
+            if not jpg:
+                return self._json({"error": "couldn't read that image"}, 400)
+            return self._json({"image": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
         if u.path == "/api/lecture/chunk":
             q = urllib.parse.parse_qs(u.query)
             ok = lecture.add_chunk(q["id"][0], int(q["seq"][0]), self._body())
@@ -386,6 +444,7 @@ class Handler(BaseHTTPRequestHandler):
         sess = get_session(path)
         img = body.get("image") or ""
         img = img.split(",", 1)[1] if "," in img else img
+        attachments = [a for a in map(parse_data_url, body.get("attachments") or []) if a][:MAX_ATTACHMENTS]
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -394,6 +453,8 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         question, page = body.get("question", "Explain this slide."), body.get("page", 1)
         user_msg = {"role": "user", "text": body.get("display") or question, "slide": page, "ts": time.time(), "snip": bool(body.get("snip"))}
+        if attachments:
+            user_msg["images"] = [save_chat_image(t, b) for t, b in attachments]
         answer, gone = [], False
         # Lecture notes: the whole set goes in when the session starts (or when notes appear/change mid-session),
         # and what the lecturer said about *this* slide goes with every question.
@@ -406,7 +467,7 @@ class Handler(BaseHTTPRequestHandler):
         here = lecture.slide_notes(path, page)
         if here:
             question = f"{here}\n\n---\n\n{question}"
-        for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path)):
+        for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path), attachments):
             if isinstance(chunk, tuple):  # ("status", "Using blackboard › …") / ("usage", {...}): live only, not saved
                 if chunk[0] == "usage":
                     USAGE[path] = chunk[1]
