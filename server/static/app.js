@@ -335,8 +335,7 @@ async function buildPages() {
   const first = await state.pdf.getPage(1);
   const vp1 = first.getViewport({ scale: 1 });
   state.base = { w: vp1.width, h: vp1.height };
-  // "Fit" = the whole slide fits on screen, so there's always one clear current slide.
-  if (state.fit || !state.scale) state.scale = Math.min((viewer.clientWidth - 110) / vp1.width, (viewer.clientHeight - 48) / vp1.height);
+  if (state.fit || !state.scale) state.scale = fitScale();
   observer = new IntersectionObserver(onIntersect, { root: viewer, threshold: [0, 0.25, 0.5, 0.75, 1] });
   for (let i = 1; i <= state.pdf.numPages; i++) {
     const div = document.createElement('div');
@@ -350,6 +349,17 @@ async function buildPages() {
   }
   markChattedSlides();
   markNoteSlides();
+  syncGutter();
+}
+// "Fit" = the whole slide fits on screen, so there's always one clear current slide. Only a thin gutter is
+// kept around it (room for the current-slide ring), so the slide gets as much of the screen as possible.
+const FIT_GUTTER_X = 16, FIT_GUTTER_Y = 24;
+const fitScale = () => Math.min((viewer.clientWidth - FIT_GUTTER_X) / state.base.w, (viewer.clientHeight - FIT_GUTTER_Y) / state.base.h);
+// The slide number sits in the margin left of each slide; when there's no room for it there (Fit, or zoomed in),
+// it moves inside the slide's top-left corner as a small badge.
+function syncGutter() {
+  const w = state.pages[0] ? parseFloat(state.pages[0].div.style.width) : 0;
+  viewer.classList.toggle('tight', (viewer.clientWidth - w) / 2 < 44);
 }
 
 const visible = new Map();
@@ -470,12 +480,13 @@ function rescaleInPlace(scale) {
     if (p.div.style.getPropertyValue('--scale-factor')) p.div.style.setProperty('--scale-factor', scale);
   }
   state.scale = scale;
+  syncGutter();
 }
 // Fit mode while a panel is dragged or the window resized: refit the slides every frame, live (like Claude's
 // panels), keeping the current slide where it sits; they re-render sharp once the resizing stops.
 function fitNow() {
   if (!state.pdf || !state.fit || !state.pages.length || !state.base) return;
-  const s = Math.min((viewer.clientWidth - 110) / state.base.w, (viewer.clientHeight - 48) / state.base.h);
+  const s = fitScale();
   if (!(s > 0) || Math.abs(s - state.scale) < 1e-4) return;
   const d = state.pages[state.current - 1].div, vr = viewer.getBoundingClientRect(), r = d.getBoundingClientRect();
   const frac = (r.top + r.height / 2 - vr.top) / viewer.clientHeight;  // where the current slide's middle sits
@@ -512,7 +523,7 @@ $('#btnNext').onclick = () => goTo(state.current + 1);
 $('#btnZoomIn').onclick = () => setZoom(state.scale * 1.2);
 $('#btnZoomOut').onclick = () => setZoom(state.scale / 1.2);
 $('#btnFit').onclick = () => setZoom(null, true);
-window.addEventListener('resize', () => liveFit());
+window.addEventListener('resize', () => { liveFit(); syncGutter(); });
 
 // Render a page (optionally a crop in 0..1 page coords) to a data URL at a target pixel width.
 async function renderImage(n, { width = 2400, crop = null, type = 'image/png', quality = 0.9 } = {}) {
@@ -1097,7 +1108,7 @@ $('#btnReset').onclick = async () => {
 // Panels, settings, keyboard, drag & drop
 // =====================================================================================
 function showChat() { document.body.classList.remove('chat-hidden'); store.set('chatHidden', false); }
-function refit() { if (state.pdf && state.fit) liveFit(0); }
+function refit() { if (state.pdf && state.fit) liveFit(0); syncGutter(); }
 function toggleLib() { document.body.classList.toggle('lib-hidden'); store.set('libHidden', document.body.classList.contains('lib-hidden')); refit(); }
 $('#btnChat').onclick = () => { document.body.classList.toggle('chat-hidden'); store.set('chatHidden', document.body.classList.contains('chat-hidden')); refit(); };
 $('#btnLibrary').onclick = toggleLib;
