@@ -765,6 +765,9 @@ async function showPeek(a) {
   if (!peek.cache.has(key)) peek.cache.set(key, renderImage(n, { width: 520, type: 'image/jpeg', quality: 0.82 }));
   const src = await peek.cache.get(key);
   if (peek.cur !== a) return;
+  // The chat re-renders while an answer streams in, replacing the link under the mouse. A detached link has
+  // no position (the preview would pin to the top-left) and never gets a mouseout, so the preview would stick.
+  if (!a.isConnected) return hidePeek();
   el.querySelector('img').src = src;
   el.hidden = false;
   const r = a.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
@@ -774,11 +777,14 @@ async function showPeek(a) {
 function hidePeek() { peek.cur = null; clearTimeout(peek.t); if (peek.el) peek.el.hidden = true; }
 document.addEventListener('mouseover', (e) => {
   const a = e.target.closest?.('.slide-ref');
-  if (!a || a === peek.cur) return;
+  if (!a) { if (peek.cur) hidePeek(); return; }  // over anything else: no preview (catches links that were replaced)
+  if (a === peek.cur) return;
   clearTimeout(peek.t);
   peek.t = setTimeout(() => showPeek(a), 120);
 });
 document.addEventListener('mouseout', (e) => { if (e.target.closest?.('.slide-ref') && !e.relatedTarget?.closest?.('.slide-ref')) hidePeek(); });
+document.addEventListener('scroll', hidePeek, true);  // the link moved out from under the preview
+window.addEventListener('blur', hidePeek);
 document.addEventListener('click', (e) => {
   const a = e.target.closest?.('.slide-ref');
   if (!a) return;
