@@ -18,6 +18,7 @@ import providers
 HOME = Path.home()
 LECTURES = config.LECTURES
 ENV = config.ENV
+ON_NOTES_DONE = []  # callbacks(meta) once a lecture's notes are written (flashcards hook in here)
 
 
 def FFMPEG():
@@ -396,7 +397,12 @@ def generate_notes(lid, model="opus"):
         raise RuntimeError("Couldn't parse Claude's notes.")
     lib._save(ldir(lid) / "notes.json", {"summary_md": summary, "slides": {str(k): v for k, v in slides.items()}, "raw": text})
     files = _write_markdown(lid, summary, slides, sents)
-    save_meta(lid, status="done", files=files, finished=time.time())
+    m = save_meta(lid, status="done", files=files, finished=time.time())
+    for cb in ON_NOTES_DONE:
+        try:
+            cb(m)
+        except Exception as e:
+            print("notes-done hook failed", e, flush=True)
 
 
 def _write_markdown(lid, summary, slides, sents):

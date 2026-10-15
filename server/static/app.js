@@ -31,6 +31,7 @@ function toast(msg, err = false, ms = 3500) {
 // Library
 // =====================================================================================
 let lib = { items: [], categories: [], sync: {}, inbox: 0, classifying: false, paths: {} };
+let cardMap = new Map();  // deck path → its flashcard counts (see Flashcards)
 const collapsed = new Set(store.get('collapsed', []));
 const hiddenCourses = new Set(store.get('hiddenCourses', []));
 $('#libSort').value = store.get('libSort', 'week');
@@ -130,10 +131,12 @@ function group(key, head, kidsHtml, cls) {
 }
 
 function fileRow(i, extra = '') {
+  const due = cardMap.get(i.path)?.counts.due;
   return `<button class="file${i.path === state.path ? ' active' : ''}" data-path="${esc(i.path)}" title="${esc(i.name)}">
       <span class="ttl">${extra}${esc(i.title)}</span>
       ${isNew(i) ? '<span class="new" title="New, not opened yet"></span>' : ''}
       ${i.hasChat ? icon('chat', 'has-chat') : ''}
+      ${due ? `<span class="cards-due" title="${due} flashcard${due > 1 ? 's' : ''} due">${due}</span>` : ''}
       ${i.week != null ? `<span class="wk">W${i.week}</span>` : ''}
       <span class="more" data-fmenu="${esc(i.path)}" title="More">${icon('dots')}</span>
     </button>`;
@@ -316,6 +319,7 @@ async function openPdf(path, page) {
     history.replaceState(null, '', '?file=' + encodeURIComponent(path));
     await loadChat(path);
     loadLectures(path);
+    loadDeckCards(path);
     loadUsage(path);
     await buildPages();
     goTo(page || store.get('page:' + path, 1), false);
@@ -695,7 +699,7 @@ ctx.addEventListener('click', async (e) => {
 // =====================================================================================
 // Chat (saved per deck, shown per slide)
 // =====================================================================================
-function mdRender(text) {
+function mdRender(text, links = true) {
   const math = [];
   const stash = (tex, display) => { math.push({ tex, display }); return `@@M${math.length - 1}@@`; };
   const t = text
@@ -703,10 +707,11 @@ function mdRender(text) {
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => stash(m, true))
     .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => stash(m, false))
     .replace(/(^|[^\\$\w])\$([^\s$](?:[^$\n]*?[^\s$])?)\$(?![\w$])/g, (_, pre, m) => pre + stash(m, false));
-  return linkSlides(marked.parse(t, { gfm: true }).replace(/@@M(\d+)@@/g, (_, i) => {
+  const html = marked.parse(t, { gfm: true }).replace(/@@M(\d+)@@/g, (_, i) => {
     const { tex, display } = math[+i];
     try { return katex.renderToString(tex, { displayMode: display, throwOnError: false }); } catch { return esc(tex); }
-  }));
+  });
+  return links ? linkSlides(html) : html;
 }
 
 // "slide 26" / "slides 24–28" / "slides 7 and 9" in answers and notes → links (hover to preview, click to go).
@@ -1182,7 +1187,7 @@ function readModelFields() {
   if ($('#setClaudeModel')) { draft.claude_model = $('#setClaudeModel').value; draft.claude_notes_model = $('#setClaudeNotes').value; }
 }
 async function loadStatus() { sysStatus = await (await api('/api/status')).json(); }
-const PANE_TITLES = { general: 'Library', ai: 'AI tutor', ipad: 'Send to iPad', recording: 'Lecture recording', connections: 'Connections & sync', storage: 'Storage' };
+const PANE_TITLES = { general: 'Library', ai: 'AI tutor', ipad: 'Send to iPad', recording: 'Lecture recording', cards: 'Flashcards', connections: 'Connections & sync', storage: 'Storage' };
 function showPane(name) {
   if (!PANE_TITLES[name]) name = 'general';
   document.querySelectorAll('#settings .pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
@@ -1201,6 +1206,10 @@ async function openSettings(firstRun = false, pane) {
   renderRoots();
   $('#setIpad').value = cfg.ipad_name || '';
   $('#setRecLimit').value = cfg.rec_limit_min ?? 120;
+  $('#setCardsAuto').checked = cfg.cards_auto !== false;
+  $('#setCardsChats').checked = cfg.cards_from_chats !== false;
+  $('#setCardsNew').value = cfg.cards_new_per_day ?? 20;
+  $('#setCardsRetention').value = String(cfg.cards_retention ?? 0.9);
   $('#setAirdrop').checked = cfg.airdrop;
   $('#setClip').checked = cfg.copy_to_clipboard;
   $('#setSync').value = cfg.sync_command || '';
@@ -1425,6 +1434,9 @@ function settingsPayload() {
     sync_mcp: mode === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
     write_markdown: $('#setMd').checked,
     rec_limit_min: Math.max(0, Math.min(1440, Math.round(+$('#setRecLimit').value || 0))),
+    cards_auto: $('#setCardsAuto').checked, cards_from_chats: $('#setCardsChats').checked,
+    cards_new_per_day: Math.max(0, Math.min(500, Math.round(+$('#setCardsNew').value || 0))),
+    cards_retention: +$('#setCardsRetention').value || 0.9,
   };
 }
 // Changes apply as you make them (no Save button), like Cursor.
@@ -1440,12 +1452,13 @@ async function saveSettings(now = false) {
     if (before.provider !== cfg.provider || before.claude_model !== cfg.claude_model || before.codex_model !== cfg.codex_model) loadModels();
     if (JSON.stringify(before.library_roots) !== JSON.stringify(cfg.library_roots)) loadLibrary();
     if (before.sync_mcp?.tool !== cfg.sync_mcp?.tool || before.sync_command !== cfg.sync_command) loadLibrary();
+    if (before.cards_new_per_day !== cfg.cards_new_per_day || before.cards_retention !== cfg.cards_retention) { loadCardsOverview(); if (state.path) loadDeckCards(); }
   };
   if (now) return go();
   saveT = setTimeout(go, 400);
 }
 $('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp')) saveSettings(); });
-$('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit')) saveSettings(); });
+$('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit, #setCardsNew')) saveSettings(); });
 $('#btnSettingsClose').onclick = () => $('#settings').close();
 $('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
 $('#settings').addEventListener('close', () => { if (!document.body.classList.contains('first-run')) saveSettings(true); });
@@ -1521,6 +1534,7 @@ window.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || $('#settings').open || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
   if (k === 'l' || k === 'L') return toggleLib();
+  if (k === 'r' || k === 'R') return openHub();
   if (!state.pdf) return;
   if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'j' || k === 'PageDown' || k === ' ') { e.preventDefault(); goTo(state.current + 1); }
   else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'k' || k === 'PageUp') { e.preventDefault(); goTo(state.current - 1); }
@@ -1530,6 +1544,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === '/') { e.preventDefault(); showChat(); $('#askInput').focus(); }
   else if (k === 't') $('#btnChat').click();
   else if (k === 'n') setPanelTab(panelTab === 'notes' ? 'chat' : 'notes');
+  else if (k === 'c') setPanelTab(panelTab === 'cards' ? 'chat' : 'cards');
   else if (k === '+' || k === '=') $('#btnZoomIn').click();
   else if (k === '-') $('#btnZoomOut').click();
 });
@@ -1638,6 +1653,7 @@ async function pump() {
 function onSlideChange(n) {
   if (rec && !rec.paused) rec.events.push({ t: Math.round(audioTime() * 10) / 10, slide: n, deck: state.path });
   if (panelTab === 'notes' && lec.mode === 'slide') renderNotes();
+  markCardsHere();
 }
 
 function togglePause() {
@@ -1698,14 +1714,540 @@ window.__slidemateStopRecording = async () => { await stopRecording(false); retu
 $('#btnRecPause').onclick = togglePause;
 window.addEventListener('beforeunload', (e) => { if (rec) { e.preventDefault(); e.returnValue = ''; } });
 
+// =====================================================================================
+// Flashcards: cards per lecture (by subtopic), written from the slides, the lecture notes and your questions;
+// reviewed with active recall on a spaced-repetition schedule (FSRS, like Anki)
+// =====================================================================================
+const cards = { overview: null, deck: null, open: new Set(store.get('cardsOpen', [])), expanded: null, editing: null };
+const RATE = [[1, 'Again'], [2, 'Hard'], [3, 'Good'], [4, 'Easy']];
+const courseLabel = (c) => (c ? shortCourse(c.replace(/^[A-Z]{2,6}\s?\d{3,6}[A-Z]?\s*[-–:]?\s+/, '')) : 'Other');
+const isLearning = (c) => c.srs.state === 'learning' || c.srs.state === 'relearning';
+const overlayOpen = () => !$('#study').hidden || !$('#hub').hidden;
+
+let cardsPollT;
+async function loadCardsOverview() {
+  clearTimeout(cardsPollT);
+  try { cards.overview = await (await api('/api/cards/overview')).json(); } catch { return; }
+  cardMap = new Map(cards.overview.decks.map((d) => [d.path, d]));
+  renderReviewBtn();
+  renderLibrary();
+  if (!$('#hub').hidden) renderHub();
+  const busy = [...cards.overview.decks, ...cards.overview.backlog].some((d) => d.job);
+  cardsPollT = setTimeout(loadCardsOverview, busy ? 5000 : 60000);
+}
+function totals() {
+  const ds = cards.overview?.decks || [], t = cards.overview?.today || {};
+  const due = ds.reduce((a, d) => a + d.counts.due, 0), fresh = ds.reduce((a, d) => a + d.counts.new, 0);
+  return { due, fresh, newToday: Math.min(fresh, t.new_left ?? 0) };
+}
+function renderReviewBtn() {
+  const { due, newToday } = totals();
+  const n = $('#reviewCount');
+  n.textContent = due ? `${due} due` : newToday ? `${newToday} new` : '';
+  n.className = 'n' + (due ? ' due' : '');
+}
+
+// Card text → HTML. Cloze cards hide {{c::…}} on the front and highlight it on the back. Slide links only make
+// sense for the deck that's open, so the study view (cards from any deck) renders without them.
+const CLOZE_RE = /\{\{c\d*::([\s\S]+?)(?:::([\s\S]*?))?\}\}/g;
+function cardFront(c, links = true) {
+  const t = c.type === 'cloze' ? c.front.replace(CLOZE_RE, (_, a, hint) => `<span class="cloze">${hint ? esc(hint) : '…'}</span>`) : c.front;
+  return mdRender(t, links);
+}
+function cardBack(c, links = true) {
+  if (c.type !== 'cloze') return mdRender(c.back, links);
+  return mdRender(c.front.replace(CLOZE_RE, (_, a) => `<mark class="cloze-a">${a}</mark>`), links) + (c.back ? `<div class="extra">${mdRender(c.back, links)}</div>` : '');
+}
+const plainCard = (s) => (s || '').replace(CLOZE_RE, '$1').replace(/\s+/g, ' ').trim();
+function badges(c) {
+  return (c.exam ? `<span class="badge exam" title="The lecturer flagged this as important or examinable">${icon('star')}Exam</span>` : '')
+    + (c.struggle ? `<span class="badge asked" title="Made from a question you asked the tutor">${icon('chat')}You asked</span>` : '')
+    + (c.leech ? '<span class="badge leech" title="You\'ve forgotten this one several times">Keeps slipping</span>' : '')
+    + (c.suspended ? '<span class="badge">Suspended</span>' : '');
+}
+function dueText(c) {
+  const s = c.srs, now = Date.now() / 1000;
+  if (c.suspended) return '';
+  if (s.state === 'new') return '<span class="st new">new</span>';
+  if (s.due <= now || isLearning(c)) return '<span class="st due">due</span>';
+  const d = (s.due - now) / 86400;
+  return `<span class="st">in ${d < 1 ? Math.max(1, Math.round(d * 24)) + 'h' : d < 60 ? Math.round(d) + 'd' : Math.round(d / 30) + 'mo'}</span>`;
+}
+function masteryBar(cs) {
+  const n = cs.length || 1;
+  const learned = cs.filter((c) => c.srs.state === 'review' && (c.srs.stability || 0) >= 21).length;
+  const seen = cs.filter((c) => c.srs.state !== 'new').length - learned;
+  return `<div class="mbar" title="${learned} learned · ${seen} learning · ${cs.length - learned - seen} not seen yet"><i class="l" style="width:${100 * learned / n}%"></i><i class="s" style="width:${100 * seen / n}%"></i></div>`;
+}
+
+// ---------- the Cards tab: this deck's cards, by subtopic ----------
+let deckPollT;
+async function loadDeckCards(path = state.path) {
+  clearTimeout(deckPollT);
+  if (!path) return;
+  let d;
+  try { d = await (await api('/api/cards/deck?path=' + encodeURIComponent(path))).json(); } catch { return; }
+  if (state.path !== path) return;
+  const was = cards.deck?.path === path ? cards.deck : null;
+  cards.deck = d;
+  if (!was && d.cards.length && ![...cards.open].some((k) => k.startsWith(path + '#'))) {  // first look: open the subtopic you're on
+    const here = d.subtopics.find((t) => t.slides?.includes(state.current)) || d.subtopics[0];
+    if (here) cards.open.add(path + '#' + here.id);
+  }
+  renderCardsPane();
+  if (d.job) {
+    deckPollT = setTimeout(() => loadDeckCards(path), 4000);
+  } else if (was?.job) {
+    loadCardsOverview();
+    toast(d.error ? 'Couldn\'t write the flashcards. Try again from the Cards tab.' : d.last_added ? `${d.last_added} new flashcard${d.last_added > 1 ? 's' : ''} ready ✓` : 'Flashcards are up to date ✓', !!d.error, 5000);
+  }
+}
+async function makeCards(path, mode = 'auto', why = 'manual') {
+  await post('/api/cards/make', { path, mode, why });
+  if (path === state.path) loadDeckCards(path);
+  loadCardsOverview();
+}
+
+function renderCardsPane() {
+  const pane = $('#cardsPane');
+  if (panelTab !== 'cards') return;
+  const d = cards.deck;
+  if (!state.path) { pane.innerHTML = ''; return; }
+  if (!d || d.path !== state.path) { pane.innerHTML = '<div class="muted"><span class="spinner"></span>Loading…</div>'; return; }
+  const job = d.job;
+  if (!d.cards.length) {
+    if (job) {
+      pane.innerHTML = `<div class="state-card"><b><span class="spinner"></span>${job.state === 'queued' ? 'Waiting for another deck to finish…' : `${providerLabel()} is writing your flashcards…`}</b>
+        Reading the slides${d.lectures_done ? ', what your lecturer said' : ''}${d.questions ? ` and the ${d.questions} question${d.questions > 1 ? 's' : ''} you asked` : ''}, then splitting it into subtopics. This takes a few minutes; you can keep studying.</div>`;
+      return;
+    }
+    const src = (ok, text) => `<li class="${ok ? 'ok' : 'no'}">${ok ? '✓' : '–'} ${text}</li>`;
+    pane.innerHTML = `${d.error ? `<div class="state-card warn"><b>Couldn't write the flashcards</b><span class="muted">${esc(d.error)}</span></div>` : ''}
+      <div class="state-card"><b>Flashcards for this lecture</b>
+      ${providerLabel()} turns the deck into active-recall cards, split by subtopic, and SlideMate schedules each one to come back just before you'd forget it (spaced repetition, as in Anki).
+      <ul class="srcs">${src(true, 'The slides')}
+        ${src(d.lectures_done, d.lectures_done ? 'What your lecturer said, exam hints first' : 'No lecture notes yet')}
+        ${src(d.questions, d.questions ? `${d.questions} question${d.questions > 1 ? 's' : ''} you asked the tutor (the hard bits get their own cards)` : 'Your questions to the tutor (none yet)')}</ul>
+      ${d.lectures_done ? '' : '<div class="muted small">Best after the lecture: record it (or import a transcript) and the cards follow what the lecturer stressed. They\'re made automatically when the notes are written.</div>'}
+      <div class="actions"><button class="primary" data-ca="make">${icon('sparkle')}${d.error ? 'Try again' : 'Make flashcards'}</button></div></div>`;
+    return;
+  }
+  const c = d.counts;
+  const newNow = Math.min(c.new, cards.overview?.today?.new_left ?? c.new);
+  let html = `<div class="deck-head">
+      <div class="nums"><div><b>${c.due}</b><span>due</span></div><div><b>${c.new}</b><span>new</span></div><div><b>${c.mature}</b><span>of ${c.total - c.suspended} learned</span></div></div>
+      ${masteryBar(d.cards.filter((x) => !x.suspended))}
+      <div class="actions"><button class="primary" data-ca="study" ${c.due + newNow ? '' : 'disabled'}>${icon('cards')}${c.due + newNow ? `Study ${c.due + newNow} card${c.due + newNow > 1 ? 's' : ''}` : 'All caught up'}</button>
+        <button class="ghost icon" data-ca="menu" title="More">${icon('dots')}</button></div>
+    </div>`;
+  if (job) html += `<div class="status-line"><span class="spinner"></span>${job.state === 'queued' ? 'Waiting to add cards…' : 'Adding cards…'}</div>`;
+  else if (d.new_questions) html += `<div class="nudge">${icon('chat')}<span>You've asked ${d.new_questions} new question${d.new_questions > 1 ? 's' : ''} since these cards were made.</span><button class="small" data-ca="chats">Add cards</button></div>`;
+  if (d.error && !job) html += `<div class="status-line warn">Last update failed: ${esc(d.error)}</div>`;
+  for (const t of d.subtopics) {
+    const cs = d.cards.filter((x) => x.subtopic === t.id);
+    if (!cs.length) continue;
+    const key = d.path + '#' + t.id, open = cards.open.has(key);
+    const due = cs.filter((x) => !x.suspended && x.srs.state !== 'new' && (x.srs.due <= Date.now() / 1000 + 3600 * 6 || isLearning(x))).length;
+    const fresh = cs.filter((x) => !x.suspended && x.srs.state === 'new').length;
+    const here = t.slides?.includes(state.current);
+    html += `<div class="sub${open ? ' open' : ''}${here ? ' here' : ''}" data-sub="${t.id}">
+      <button class="sub-head">${icon('down', 'chev')}<span class="ttl">${esc(t.title)}</span><span class="cnt">${due ? `${due} due · ` : ''}${fresh ? `${fresh} new · ` : ''}${cs.length}</span></button>
+      ${masteryBar(cs)}
+      <div class="sub-body">${t.summary ? `<div class="sum">${esc(t.summary)}${t.slides?.length ? ` · slides ${t.slides[0]}–${t.slides.at(-1)}` : ''}</div>` : ''}
+        <button class="small" data-ca="studysub" data-sid="${t.id}">${icon('cards')}Study this subtopic</button>
+        ${cs.map(cardRow).join('')}</div></div>`;
+  }
+  pane.innerHTML = html;
+}
+function cardRow(c) {
+  const open = cards.expanded === c.id, editing = cards.editing === c.id;
+  const here = c.slides?.includes(state.current);
+  let body = '';
+  if (editing) body = editForm(c);
+  else if (open) {
+    body = `<div class="crd-back">${cardBack(c)}${c.why ? `<div class="why">${mdRender(c.why)}</div>` : ''}</div>
+      <div class="crd-acts"><button class="small ghost" data-ca="edit">${icon('edit')}Edit</button>
+        <button class="small ghost" data-ca="suspend">${icon('pause-card')}${c.suspended ? 'Unsuspend' : 'Suspend'}</button>
+        ${c.srs.reps ? `<button class="small ghost" data-ca="reset">${icon('history')}Forget</button>` : ''}
+        <button class="small ghost danger" data-ca="del">${icon('trash')}Delete</button></div>`;
+  }
+  return `<div class="crd${open || editing ? ' open' : ''}${here ? ' here' : ''}${c.suspended ? ' off' : ''}" data-card="${c.id}">
+    <div class="crd-front">${cardFront(c)}</div>
+    <div class="crd-meta">${badges(c)}${(c.slides || []).map((n) => `<a class="slide-ref" data-slide="${n}">slide ${n}</a>`).join('')}${dueText(c)}</div>${body}</div>`;
+}
+function editForm(c) {
+  return `<div class="crd-edit"><label>${c.type === 'cloze' ? 'Text (hide a part with {{c::…}})' : 'Question'}<textarea data-f="front" rows="3">${esc(c.front)}</textarea></label>
+    <label>${c.type === 'cloze' ? 'Extra (optional)' : 'Answer'}<textarea data-f="back" rows="3">${esc(c.back)}</textarea></label>
+    <label>Why it matters (optional)<textarea data-f="why" rows="2">${esc(c.why || '')}</textarea></label>
+    <div class="crd-acts"><button class="small ghost" data-ca="cancel">Cancel</button><button class="small primary" data-ca="save">Save</button></div></div>`;
+}
+function markCardsHere() {
+  if (panelTab !== 'cards' || !cards.deck?.cards?.length) return;
+  const byId = new Map(cards.deck.cards.map((c) => [c.id, c]));
+  $('#cardsPane').querySelectorAll('[data-card]').forEach((el) => el.classList.toggle('here', !!byId.get(el.dataset.card)?.slides?.includes(state.current)));
+  $('#cardsPane').querySelectorAll('[data-sub]').forEach((el) => el.classList.toggle('here', !!cards.deck.subtopics.find((t) => t.id === el.dataset.sub)?.slides?.includes(state.current)));
+}
+async function editCard(path, id, change) {
+  const r = await post('/api/cards/edit', { path, id, ...change });
+  if (r.error) { toast(r.error, true); return null; }
+  return r.card;
+}
+$('#cardsPane').addEventListener('click', async (e) => {
+  const d = cards.deck;
+  const b = e.target.closest('[data-ca]'), a = b?.dataset.ca;
+  if (e.target.closest('.slide-ref')) return;  // handled globally (jump to the slide)
+  const row = e.target.closest('[data-card]'), card = row && d.cards.find((c) => c.id === row.dataset.card);
+  if (a === 'make') return makeCards(d.path);
+  if (a === 'study') return startStudy('deck:' + d.path, '', d.title);
+  if (a === 'studysub') return startStudy('deck:' + d.path, b.dataset.sid, d.subtopics.find((t) => t.id === b.dataset.sid)?.title);
+  if (a === 'chats') return makeCards(d.path, 'auto', 'chats');
+  if (a === 'menu') {
+    const r = b.getBoundingClientRect(), m = $('#cardsMenu');
+    m.querySelector('[data-cm="chats"]').hidden = !d.questions;
+    m.hidden = false;
+    m.style.left = Math.max(8, r.right - m.offsetWidth) + 'px';
+    m.style.top = r.bottom + 6 + 'px';
+    return;
+  }
+  if (card && a === 'edit') { cards.editing = card.id; return renderCardsPane(); }
+  if (card && a === 'cancel') { cards.editing = null; return renderCardsPane(); }
+  if (card && a === 'save') {
+    const f = Object.fromEntries([...row.querySelectorAll('[data-f]')].map((t) => [t.dataset.f, t.value]));
+    const upd = await editCard(d.path, card.id, f);
+    if (upd) Object.assign(card, upd);
+    cards.editing = null;
+    return renderCardsPane();
+  }
+  if (card && a === 'suspend') { Object.assign(card, await editCard(d.path, card.id, { suspended: !card.suspended }) || {}); loadCardsOverview(); return renderCardsPane(); }
+  if (card && a === 'reset' && confirm('Forget your progress on this card? It becomes a new card again.')) { Object.assign(card, await editCard(d.path, card.id, { reset: true }) || {}); loadCardsOverview(); return renderCardsPane(); }
+  if (card && a === 'del' && confirm('Delete this card?')) {
+    if (await editCard(d.path, card.id, { delete: true })) d.cards = d.cards.filter((c) => c !== card);
+    loadCardsOverview();
+    return renderCardsPane();
+  }
+  if (b) return;
+  const head = e.target.closest('.sub-head');
+  if (head) {
+    const key = d.path + '#' + head.parentElement.dataset.sub;
+    cards.open.has(key) ? cards.open.delete(key) : cards.open.add(key);
+    store.set('cardsOpen', [...cards.open].slice(-200));
+    head.parentElement.classList.toggle('open');
+    return;
+  }
+  if (card && !cards.editing && !e.target.closest('.crd-edit') && !window.getSelection()?.toString()) {
+    cards.expanded = cards.expanded === card.id ? null : card.id;
+    renderCardsPane();
+  }
+});
+$('#cardsMenu').addEventListener('click', async (e) => {
+  const a = e.target.closest('button')?.dataset.cm, d = cards.deck;
+  $('#cardsMenu').hidden = true;
+  if (!a || !d) return;
+  if (a === 'chats') makeCards(d.path, 'auto', 'chats');
+  if (a === 'rebuild' && confirm('Rewrite the cards you haven\'t studied yet?\n\nCards you\'ve already reviewed (and their progress) are kept; the rest are written again from the slides, lecture notes and your questions.')) makeCards(d.path, 'rebuild');
+  if (a === 'export') {
+    const r = await post('/api/cards/export', { path: d.path });
+    if (r.error) return toast(r.error, true);
+    post('/api/reveal', { path: r.file });
+    toast(`Saved ${r.count} cards for Anki. In Anki: File → Import, and pick this file.`, false, 8000);
+  }
+  if (a === 'delete' && confirm(`Delete all ${d.cards.length} flashcards for "${d.title}", including your review history?`)) {
+    await post('/api/cards/delete-deck', { path: d.path });
+    loadDeckCards(d.path); loadCardsOverview();
+  }
+});
+window.addEventListener('mousedown', (e) => { if (!e.target.closest('#cardsMenu') && !e.target.closest('[data-ca="menu"]')) $('#cardsMenu').hidden = true; });
+
+// ---------- slide pictures for the back of a card (dual coding: the words plus the slide they came from) ----------
+const thumbDocs = new Map(), thumbs = new Map();
+async function slideThumb(path, n, width = 640) {
+  const key = `${path}#${n}`;
+  if (!thumbs.has(key)) {
+    thumbs.set(key, (async () => {
+      let doc = path === state.path ? state.pdf : null;
+      if (!doc) {
+        if (!thumbDocs.has(path)) {
+          thumbDocs.set(path, pdfjsLib.getDocument({ url: '/api/pdf?path=' + encodeURIComponent(path), httpHeaders: H }).promise);
+          if (thumbDocs.size > 4) { const [k, p] = thumbDocs.entries().next().value; thumbDocs.delete(k); p.then((x) => x.destroy()).catch(() => {}); }
+        }
+        doc = await thumbDocs.get(path);
+      }
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: g, viewport: vp }).promise;
+      return c.toDataURL('image/jpeg', 0.85);
+    })().catch((e) => { thumbs.delete(key); throw e; }));
+  }
+  return thumbs.get(key);
+}
+
+// ---------- studying: active recall, then rate how well you remembered ----------
+let study = null;
+async function startStudy(scope = 'all', subtopic = '', title = '') {
+  let r;
+  try { r = await (await api(`/api/cards/queue?scope=${encodeURIComponent(scope)}&subtopic=${encodeURIComponent(subtopic)}`)).json(); }
+  catch { return toast('Couldn\'t load your cards', true); }
+  study = { scope, subtopic, title: title || 'All courses', main: r.cards.filter((c) => !isLearning(c)), learning: r.cards.filter(isLearning),
+            learnAhead: r.learn_ahead, moreNew: r.more_new, cur: null, revealed: false, done: 0, firstTry: 0, seen: new Set(), history: [], busy: false };
+  study.total = r.cards.length;
+  $('#hub').hidden = true;
+  $('#study').hidden = false;
+  document.body.classList.add('studying');
+  nextCard();
+}
+function closeStudy() {
+  $('#study').hidden = true;
+  study = null;
+  if ($('#hub').hidden) document.body.classList.remove('studying');
+  loadCardsOverview();
+  if (state.path) loadDeckCards(state.path);
+}
+function nextCard() {
+  const now = Date.now() / 1000;
+  study.learning.sort((a, b) => a.srs.due - b.srs.due);
+  const l = study.learning[0];
+  let c = null;
+  if (l && l.srs.due <= now) c = study.learning.shift();
+  else if (study.main.length) c = study.main.shift();
+  else if (l && l.srs.due - now <= study.learnAhead) c = study.learning.shift();  // nothing else left: show it a little early
+  Object.assign(study, { cur: c, revealed: false, typed: '', editing: false });
+  renderStudy();
+}
+const remaining = () => study.main.length + study.learning.length + (study.cur ? 1 : 0);
+function renderStudy() {
+  const el = $('#study'), c = study.cur;
+  const left = remaining(), prog = study.total ? Math.min(1, study.done / (study.done + left)) : 1;
+  const top = `<div class="study-top">
+      <button class="ghost icon" data-sa="close" title="Close (Esc)">${icon('x')}</button>
+      <div class="ttl">${icon('cards')}<span>${esc(study.title)}</span></div>
+      <div class="prog"><i style="width:${100 * prog}%"></i></div>
+      <span class="left">${left ? `${left} left` : ''}</span>
+      <button class="ghost icon" data-sa="undo" title="Undo last answer (Z)" ${study.history.length ? '' : 'disabled'}>${icon('undo')}</button>
+    </div>`;
+  if (!c) {
+    const pct = study.seen.size ? Math.round(100 * study.firstTry / study.seen.size) : 0;
+    const later = study.learning.length ? study.learning[0].srs.due : 0;
+    el.innerHTML = top + `<div class="study-done">
+      <div class="big">${study.done ? 'Session done' : 'Nothing due right now'}</div>
+      ${study.done ? `<p>${study.done} review${study.done > 1 ? 's' : ''} · ${study.seen.size} card${study.seen.size > 1 ? 's' : ''} · remembered ${pct}% on the first try.</p>` : '<p>Every card here is scheduled for later. Coming back when they\'re due is what makes them stick.</p>'}
+      ${later ? `<p class="muted">${study.learning.length} card${study.learning.length > 1 ? 's are' : ' is'} still in learning: back at ${new Date(later * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</p>` : ''}
+      ${study.moreNew ? `<p class="muted">${study.moreNew} more new card${study.moreNew > 1 ? 's' : ''} wait${study.moreNew > 1 ? '' : 's'} for the next few days (${cards.overview?.today?.new_limit ?? 20} new a day, change it in Settings).</p>` : ''}
+      <div class="actions"><button class="primary" data-sa="close">Done</button><button data-sa="hub">${icon('cards')}All flashcards</button></div></div>`;
+    return;
+  }
+  const meta = `<div class="meta"><span>${esc(courseLabel(c.course))} · ${esc(c.deck_title || '')}${c.subtopic_title ? ' · ' + esc(c.subtopic_title) : ''}</span>${badges(c)}
+      <span class="sp"></span><button class="small ghost" data-sa="edit" title="Edit this card">${icon('edit')}Edit</button>
+      <button class="small ghost" data-sa="suspend" title="Don't show this card again">${icon('pause-card')}Suspend</button></div>`;
+  let body;
+  if (study.editing) {
+    body = `<div class="face">${editForm(c)}</div>`;
+  } else if (!study.revealed) {
+    body = `<div class="face front">${cardFront(c, false)}</div>
+      ${c.type === 'problem' ? '<div class="hint">Work it out on paper first, then check.</div>' : ''}
+      <textarea id="typed" rows="2" placeholder="Say it or type it from memory first (optional). Enter shows the answer."></textarea>
+      <div class="reveal"><button class="primary" data-sa="reveal">Show answer<kbd>Space</kbd></button></div>`;
+  } else {
+    const slides = (c.slides || []).slice(0, 2);
+    body = `<div class="face front small">${cardFront(c, false)}</div>
+      ${study.typed ? `<div class="yours"><span class="lbl">You said</span>${esc(study.typed)}</div>` : ''}
+      <div class="face back">${cardBack(c, false)}</div>
+      ${c.why ? `<div class="why">${mdRender(c.why, false)}</div>` : ''}
+      <div class="from">${slides.map((n) => `<button class="thumb" data-sa="slide" data-n="${n}" title="Open slide ${n}"><img data-thumb="${n}" alt=""><span>Slide ${n}</span></button>`).join('')}
+        <button class="small ghost" data-sa="ask">${icon('sparkle')}Still unclear? Ask the tutor</button></div>`;
+  }
+  const rate = study.revealed && !study.editing ? `<div class="study-rate">${RATE.map(([g, l]) => `<button data-rate="${g}" class="r${g}"><b>${l}</b><span>${c.previews?.[g] || ''}</span><kbd>${g}</kbd></button>`).join('')}</div>` : '';
+  el.innerHTML = top + `<div class="study-scroll"><div class="study-card${study.revealed ? ' revealed' : ''}">${meta}${body}</div></div>${rate}`;
+  if (study.revealed) {
+    el.querySelectorAll('img[data-thumb]').forEach((img) => slideThumb(c.path, +img.dataset.thumb).then((u) => { img.src = u; }, () => img.closest('.thumb').remove()));
+  } else if (!study.editing) {
+    const t = $('#typed');
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); reveal(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t.blur(); }
+    });
+  }
+}
+function reveal() {
+  if (!study?.cur || study.revealed) return;
+  study.typed = ($('#typed')?.value || '').trim();
+  study.revealed = true;
+  renderStudy();
+}
+async function rate(g) {
+  const c = study?.cur;
+  if (!c || !study.revealed || study.busy) return;
+  study.busy = true;
+  let r;
+  try { r = await post('/api/cards/review', { path: c.path, id: c.id, rating: g }); } finally { if (study) study.busy = false; }
+  if (!study) return;
+  if (r.error) return toast(r.error, true);
+  study.history.push({ card: c, g, firstSeen: !study.seen.has(c.id) });
+  if (!study.seen.has(c.id)) { study.seen.add(c.id); if (g > 1) study.firstTry++; }
+  study.done++;
+  const upd = { ...c, ...r.card };
+  if (isLearning(upd)) study.learning.push(upd);  // back again in a few minutes
+  if (upd.leech && !c.leech) toast('This card keeps slipping. Try "Ask the tutor" for a different angle, or reword it with Edit.', false, 7000);
+  nextCard();
+}
+async function undoLast() {
+  const h = study?.history.pop();
+  if (!h) return;
+  const r = await post('/api/cards/undo', { path: h.card.path, id: h.card.id });
+  if (r.error) return toast(r.error, true);
+  study.learning = study.learning.filter((x) => x.id !== h.card.id);
+  study.main = study.main.filter((x) => x.id !== h.card.id);
+  if (study.cur && study.cur.id !== h.card.id) study.main.unshift(study.cur);
+  study.done--;
+  if (h.firstSeen) { study.seen.delete(h.card.id); if (h.g > 1) study.firstTry--; }
+  Object.assign(study, { cur: { ...h.card, ...r.card }, revealed: true, editing: false });
+  renderStudy();
+}
+async function askAboutCard(c) {
+  const slide = c.slides?.[0];
+  closeStudy();
+  if (state.path !== c.path) await openPdf(c.path, slide);
+  else if (slide) goTo(slide);
+  setPanelTab('chat');
+  const answer = c.type === 'cloze' ? plainCard(c.front) + (c.back ? ' ' + c.back : '') : c.back;
+  ask(`I'm revising with flashcards and this one didn't stick:\n\nQ: ${c.type === 'cloze' ? c.front.replace(CLOZE_RE, '[…]') : c.front}\nA: ${answer}\n\nHelp me actually understand it (a different angle from the card, tied to the slides), then check me with one quick question.`);
+}
+$('#study').addEventListener('click', async (e) => {
+  const rb = e.target.closest('[data-rate]');
+  if (rb) return rate(+rb.dataset.rate);
+  const a = e.target.closest('[data-sa], [data-ca]');
+  const act = a?.dataset.sa || a?.dataset.ca, c = study?.cur;
+  if (act === 'close') return closeStudy();
+  if (act === 'hub') { closeStudy(); return openHub(); }
+  if (act === 'reveal') return reveal();
+  if (act === 'undo') return undoLast();
+  if (!c) return;
+  if (act === 'ask') return askAboutCard(c);
+  if (act === 'slide') { const n = +a.dataset.n; closeStudy(); return state.path === c.path ? goTo(n) : openPdf(c.path, n); }
+  if (act === 'edit') { study.editing = true; return renderStudy(); }
+  if (act === 'cancel') { study.editing = false; return renderStudy(); }
+  if (act === 'save') {
+    const f = Object.fromEntries([...$('#study').querySelectorAll('[data-f]')].map((t) => [t.dataset.f, t.value]));
+    const upd = await editCard(c.path, c.id, f);
+    if (upd) Object.assign(c, { front: upd.front, back: upd.back, why: upd.why, type: upd.type });
+    study.editing = false;
+    return renderStudy();
+  }
+  if (act === 'suspend') {
+    if (await editCard(c.path, c.id, { suspended: true })) { toast('Suspended: it won\'t come up again (unsuspend it from the Cards tab).'); study.total--; nextCard(); }
+  }
+});
+
+// ---------- the hub: everything due, per course and lecture ----------
+function openHub() {
+  $('#hub').hidden = false;
+  document.body.classList.add('studying');
+  renderHub();
+  loadCardsOverview();
+}
+function closeHub() { $('#hub').hidden = true; if ($('#study').hidden) document.body.classList.remove('studying'); }
+function renderHub() {
+  const ov = cards.overview;
+  const el = $('#hub');
+  if (!ov) { el.innerHTML = '<div class="hub-wrap"><span class="spinner"></span>Loading…</div>'; return; }
+  const t = ov.today, { due, fresh, newToday } = totals();
+  const byCourse = {};
+  ov.decks.forEach((d) => (byCourse[d.course || ''] ||= []).push(d));
+  const courses = Object.keys(byCourse).sort((a, b) => courseLabel(a).localeCompare(courseLabel(b)));
+  const deckRow = (d) => {
+    const c = d.counts, n = c.total - c.suspended || 1;
+    return `<div class="hub-deck">
+      <button class="name" data-ha="open" data-path="${esc(d.path)}" title="Open this deck">${esc(d.title || '')}</button>
+      <span class="cnt">${c.due ? `<b>${c.due}</b> due · ` : ''}${c.new} new · ${c.mature}/${c.total - c.suspended} learned${d.new_questions ? ` · ${icon('chat')}${d.new_questions}` : ''}</span>
+      <div class="mbar"><i class="l" style="width:${100 * c.mature / n}%"></i><i class="s" style="width:${100 * (n - c.new - c.mature) / n}%"></i></div>
+      ${d.job ? `<span class="muted small"><span class="spinner"></span>${d.job.state === 'queued' ? 'waiting' : 'adding cards'}</span>` : ''}
+      <button class="small" data-ha="study" data-scope="deck:${esc(d.path)}" data-title="${esc(d.title || '')}" ${c.due + Math.min(c.new, t.new_left) ? '' : 'disabled'}>Study</button></div>`;
+  };
+  const backlog = ov.backlog.map((b) => `<div class="hub-deck">
+      <span class="name plain">${esc(b.title || '')}<span class="muted small"> · ${esc(courseLabel(b.course))}${b.date ? ' · ' + esc(b.date) : ''}</span></span>
+      ${b.job ? `<span class="muted small"><span class="spinner"></span>${b.job.state === 'queued' ? 'waiting' : 'writing cards…'}</span>` : b.error ? `<span class="warn small" title="${esc(b.error)}">failed</span>` : ''}
+      ${b.job ? '' : `<button class="small" data-ha="make" data-path="${esc(b.path)}">${b.error ? 'Retry' : 'Make cards'}</button>`}</div>`).join('');
+  const idle = ov.backlog.filter((b) => !b.job);
+  el.innerHTML = `<div class="hub-wrap">
+    <div class="hub-top"><h1>${icon('cards')}Flashcards</h1><button class="ghost icon" data-ha="close" title="Close (Esc)">${icon('x')}</button></div>
+    <div class="tiles">
+      <div><b>${due}</b><span>due today</span></div>
+      <div><b>${newToday}</b><span>new today${fresh > newToday ? ` (of ${fresh})` : ''}</span></div>
+      <div><b>${t.reviewed}</b><span>reviewed today</span></div>
+      <div><b>${t.streak}</b><span>day streak</span></div>
+    </div>
+    <div class="hub-go"><button class="primary big" data-ha="study" data-scope="all" ${due + newToday ? '' : 'disabled'}>${icon('cards')}${due + newToday ? `Study everything due (${due + newToday})` : ov.decks.length ? 'All caught up for today' : 'No cards yet'}</button>
+      <span class="muted small">Mixed across your courses: switching between topics feels harder, but it sticks better than one topic at a time.</span></div>
+    ${courses.map((co) => {
+      const ds = byCourse[co], cd = ds.reduce((a, d) => a + d.counts.due, 0), cn = ds.reduce((a, d) => a + d.counts.new, 0);
+      return `<section class="hub-course"><div class="hc-head"><b>${esc(courseLabel(co))}</b><span class="muted small">${cd ? `${cd} due · ` : ''}${cn} new</span>
+        <button class="small ghost" data-ha="study" data-scope="course:${esc(co)}" data-title="${esc(courseLabel(co))}" ${cd + Math.min(cn, t.new_left) ? '' : 'disabled'}>Study course</button></div>
+        ${ds.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true })).map(deckRow).join('')}</section>`;
+    }).join('')}
+    ${ov.backlog.length ? `<section class="hub-course"><div class="hc-head"><b>Lectures without flashcards yet</b><span class="muted small">they have lecture notes</span>
+        ${idle.length > 1 ? `<button class="small ghost" data-ha="makeall">Make all ${idle.length}</button>` : ''}</div>${backlog}</section>` : ''}
+    ${!ov.decks.length && !ov.backlog.length ? '<div class="state-card"><b>No flashcards yet</b>Record a lecture (or open a deck and use the Cards tab). When the lecture notes are written, its flashcards are made automatically.</div>' : ''}
+    <details class="how"><summary>How this works</summary>
+      <ul><li><b>Active recall.</b> You see the question first and answer from memory (say it, or type it) before you look. Pulling it out of memory is what strengthens it; re-reading isn't.</li>
+      <li><b>Spaced repetition.</b> How you rate each card (Again / Hard / Good / Easy) sets when it comes back. FSRS, the scheduler Anki uses, aims for the moment you're about to forget, so easy cards drift months away and hard ones come back tomorrow.</li>
+      <li><b>What gets a card.</b> Each lecture's cards come from the slides and what the lecturer said. ${icon('star')} marks points they flagged as examinable, and ${icon('chat')} marks cards made from the questions you asked the tutor, because those are the bits you found hard.</li>
+      <li><b>Subject-aware.</b> Philosophy gets arguments, objections and distinctions. Maths gets formulas, derivation steps and short problems to do on paper. Code gets "what does this do / output" cards.</li></ul></details>
+  </div>`;
+}
+$('#hub').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-ha]');
+  if (!b) return;
+  const a = b.dataset.ha;
+  if (a === 'close') return closeHub();
+  if (a === 'study') return startStudy(b.dataset.scope, '', b.dataset.title);
+  if (a === 'open') { closeHub(); await openPdf(b.dataset.path); return setPanelTab('cards'); }
+  if (a === 'make') { await makeCards(b.dataset.path, 'auto', 'lecture'); return toast('Writing flashcards: you can keep going, they appear when ready.'); }
+  if (a === 'makeall') {
+    const paths = cards.overview.backlog.filter((x) => !x.job).map((x) => x.path);
+    await post('/api/cards/make', { paths, why: 'lecture' });
+    toast(`Writing flashcards for ${paths.length} lectures, one at a time. This takes a while; you can keep studying.`, false, 7000);
+    loadCardsOverview();
+  }
+});
+$('#btnReview').onclick = openHub;
+
+// Keys while the hub or a study session is open (they win over the viewer's shortcuts).
+window.addEventListener('keydown', (e) => {
+  if (!overlayOpen()) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  if (e.key === 'Escape') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (typing) return document.activeElement.blur();
+    if (!$('#study').hidden) { if (study?.editing) { study.editing = false; return renderStudy(); } return closeStudy(); }
+    return closeHub();
+  }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey || $('#study').hidden) { if (!e.metaKey && !e.ctrlKey && !typing) e.stopImmediatePropagation(); return; }
+  e.stopImmediatePropagation();
+  if (!study?.cur || study.editing) return;
+  if ((e.key === ' ' || e.key === 'Enter') && !study.revealed) { e.preventDefault(); reveal(); }
+  else if (/^[1-4]$/.test(e.key) && study.revealed) { e.preventDefault(); rate(+e.key); }
+  else if (e.key === ' ' && study.revealed) { e.preventDefault(); rate(3); }  // Anki habit: space = Good
+  else if (e.key === 'z' || e.key === 'Z') undoLast();
+}, { capture: true });
+window.addEventListener('keydown', (e) => {  // ⌘Z undoes the last answer while studying
+  if (!$('#study').hidden && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
+    e.preventDefault(); e.stopImmediatePropagation(); undoLast();
+  }
+}, { capture: true });
+
 // ---------- panel tabs ----------
 function setPanelTab(tab) {
   panelTab = tab;
   store.set('panelTab', tab);
   document.body.classList.toggle('tab-notes', tab === 'notes');
+  document.body.classList.toggle('tab-cards', tab === 'cards');
   document.querySelectorAll('#panelTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   showChat();
   if (tab === 'notes') renderNotes();
+  if (tab === 'cards') { renderCardsPane(); if (state.path && cards.deck?.path !== state.path) loadDeckCards(); }
 }
 $('#panelTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) setPanelTab(b.dataset.tab); });
 $('#notesMode').addEventListener('click', (e) => {
@@ -1986,13 +2528,14 @@ $('#findPrev').onclick = () => find.step(-1);
 $('#findNext').onclick = () => find.step(1);
 $('#findClose').onclick = closeFind;
 window.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && state.pdf) { e.preventDefault(); openFind(); }
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && state.pdf && !overlayOpen()) { e.preventDefault(); openFind(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g' && !$('#findBar').hidden) { e.preventDefault(); find.step(e.shiftKey ? -1 : 1); }
 }, { capture: true });
 
 (async () => {
   cfg = await (await api('/api/config')).json();
   loadModels();
+  loadCardsOverview();
   await loadLibrary();
   if (!cfg.setup_done) openSettings(true);
   const params = new URLSearchParams(location.search);

@@ -20,7 +20,7 @@ import providers
 
 LIB_PATH = config.DATA / "library.json"
 CATEGORIES = ["Lectures", "Labs", "Seminar readings", "Readings", "Exercises", "Assessment", "Course info", "Other"]
-SKIP_DIRS = {"_Inbox", "SlideMate Chats", "Lectures (SlideMate)"}
+SKIP_DIRS = {"_Inbox", "SlideMate Chats", "Lectures (SlideMate)", "SlideMate Flashcards"}
 _lock = threading.RLock()
 
 

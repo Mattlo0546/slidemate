@@ -49,6 +49,11 @@ DEFAULTS = {
     "course_titles": {},            # course folder → display name (renames are display-only)
     "mcp_servers": {},              # MCP servers the tutor can use (see mcp.py)
     "sync_mcp": {"server": "", "tool": "", "login_tool": ""},  # optional: an MCP tool behind the Sync button
+    "cards_auto": True,             # make flashcards when a lecture's notes are written
+    "cards_from_chats": True,       # add cards for what you asked the tutor, once a revision session goes quiet
+    "cards_new_per_day": 20,        # new flashcards introduced per day (all decks together)
+    "cards_retention": 0.9,         # FSRS target: the chance you still remember a card when it comes up
+    "cards_since": 0,               # when flashcards were first switched on (older lectures are made on request)
 }
 
 

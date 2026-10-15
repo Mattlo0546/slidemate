@@ -38,6 +38,11 @@
     <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.3-2.4l7.9-7.9"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="13" rx="2"/><path d="M7 7V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-pause-card" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
   </defs>
 </svg>
 
@@ -48,6 +53,7 @@
       <button id="btnLibClose" class="ghost icon" title="Hide library (L)"><svg><use href="#i-sidebar"/></svg></button>
     </div>
     <div class="search"><svg><use href="#i-search"/></svg><input id="libSearch" type="search" placeholder="Search"></div>
+    <button id="btnReview" class="review-btn" title="Flashcards: review what's due (R)"><svg><use href="#i-cards"/></svg><span>Flashcards</span><span class="n" id="reviewCount"></span></button>
     <div id="courseChips"></div>
     <div class="side-actions">
       <button id="btnPull" class="ghost"><svg><use href="#i-refresh"/></svg><span>Sync now</span></button>
@@ -123,6 +129,7 @@
       <div class="tabs" id="panelTabs">
         <button data-tab="chat" class="on"><svg><use href="#i-chat"/></svg>Chat</button>
         <button data-tab="notes"><svg><use href="#i-notes"/></svg>Lecture notes</button>
+        <button data-tab="cards"><svg><use href="#i-cards"/></svg>Cards</button>
       </div>
       <button id="btnReset" class="ghost small" title="Archive this deck's chat and start fresh"><svg><use href="#i-history"/></svg>New chat</button>
       <button id="btnNotesMenu" class="ghost icon" title="More" hidden><svg><use href="#i-dots"/></svg></button>
@@ -139,6 +146,7 @@
       <select id="lecturePick" hidden></select>
     </div>
     <div id="notesPane" hidden></div>
+    <div id="cardsPane" hidden></div>
     <div id="messages"></div>
     <div id="composer">
       <div id="chips">
@@ -179,6 +187,13 @@
 <div id="libMenu" class="menu" hidden></div>
 <div id="modelMenu" class="menu" hidden></div>
 <div id="usagePop" class="menu" hidden></div>
+<div id="cardsMenu" class="menu" hidden>
+  <button data-cm="chats"><svg><use href="#i-chat"/></svg>Add cards from my questions</button>
+  <button data-cm="rebuild"><svg><use href="#i-sparkle"/></svg>Rewrite cards I haven't studied</button>
+  <button data-cm="export"><svg><use href="#i-send"/></svg>Export for Anki…</button>
+  <hr>
+  <button data-cm="delete" class="danger"><svg><use href="#i-trash"/></svg>Delete all cards for this deck…</button>
+</div>
 <div id="notesMenu" class="menu" hidden>
   <button data-nm="import"><svg><use href="#i-notes"/></svg>Import a transcript…</button>
   <button data-nm="regen"><svg><use href="#i-sparkle"/></svg>Rewrite notes</button>
@@ -205,6 +220,7 @@
       <button type="button" data-pane="ai"><svg><use href="#i-sparkle"/></svg>AI tutor</button>
       <button type="button" data-pane="ipad"><svg><use href="#i-send"/></svg>Send to iPad</button>
       <button type="button" data-pane="recording"><svg><use href="#i-mic"/></svg>Lecture recording</button>
+      <button type="button" data-pane="cards"><svg><use href="#i-cards"/></svg>Flashcards</button>
       <button type="button" data-pane="connections"><svg><use href="#i-refresh"/></svg>Connections &amp; sync</button>
       <button type="button" data-pane="storage"><svg><use href="#i-inbox"/></svg>Storage</button>
     </nav>
@@ -291,6 +307,29 @@
           </div>
         </section>
 
+        <section class="pane" data-pane="cards">
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Make flashcards after each lecture</b><span>When a lecture's notes are written, Claude turns the slides and what the lecturer said into cards, split by subtopic. Exam hints come first.</span></div>
+              <input type="checkbox" class="switch" id="setCardsAuto">
+            </label>
+            <label class="set-row">
+              <div class="set-label"><b>Add cards from your questions</b><span>After you've been asking the tutor about a deck (and gone quiet for 20 minutes), the things you found hard get their own cards.</span></div>
+              <input type="checkbox" class="switch" id="setCardsChats">
+            </label>
+          </div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>New cards per day</b><span>Across all courses. Each new card brings about 10 reviews over the next month, so 20 a day is a steady pace.</span></div>
+              <span class="num-unit"><input id="setCardsNew" type="number" min="0" max="500" step="5" inputmode="numeric"><span>cards</span></span>
+            </label>
+            <label class="set-row">
+              <div class="set-label"><b>Target recall</b><span>How likely you should be to still remember a card when it comes back. Higher means more reviews. Scheduling uses FSRS, the algorithm Anki uses.</span></div>
+              <select id="setCardsRetention" class="set-input"><option value="0.8">80% · fewest reviews</option><option value="0.85">85%</option><option value="0.9">90% · recommended</option><option value="0.95">95% · before an exam</option></select>
+            </label>
+          </div>
+        </section>
+
         <section class="pane" data-pane="connections">
           <div class="set-group">
             <div class="set-row col">
@@ -338,6 +377,9 @@
     </div>
   </form>
 </dialog>
+
+<div id="hub" class="overlay" hidden></div>
+<div id="study" class="overlay" hidden></div>
 
 <div id="toasts"></div>
 <dialog id="picView"><img id="picViewImg" alt="Attached picture"></dialog>

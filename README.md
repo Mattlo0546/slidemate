@@ -73,6 +73,17 @@ a single file. PDFs dropped onto the window get filed into the right course.
 </tr>
 </table>
 
+### 🃏 Flashcards that know what was hard
+After each lecture, SlideMate writes active-recall flashcards for it, split by subtopic. They come from the slides and
+from **what the lecturer said**, so anything flagged as examinable is marked ⭐. They also come from **the questions you
+asked the tutor**: what you struggled with gets its own card. When you've been revising a deck in the chat, new cards
+are added for the bits you asked about.
+
+Review with spaced repetition. **FSRS**, the scheduler Anki uses, brings each card back just before you'd forget it.
+"Study everything due" mixes your courses, and the back of each card shows the slide it came from. Cards adapt to the
+subject: arguments and objections for philosophy, mechanisms and trade-offs for engineering, formulas, derivation
+steps and short problems for maths. Press <kbd>R</kbd> to review, and export any deck to Anki.
+
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
@@ -94,6 +105,7 @@ a single file. PDFs dropped onto the window get filed into the right course.
 | Uses what the lecturer said | Yes, from your recording | No | If you upload a transcript |
 | Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
 | Chats saved per slide | Yes | One long chat | One notebook chat |
+| Flashcards from the lecture + your questions | Yes, spaced repetition (FSRS) | No | Generic flashcards |
 | Where it runs | On your Mac (open source) | Web | Web |
 | Cost | Free; uses your existing Claude or ChatGPT plan | Your plan | Varies |
 
@@ -164,12 +176,13 @@ Uni/                      ← the folder you choose in setup
 │   ├── Week 01/...pdf
 │   └── Lectures (SlideMate)/   ← lecture summaries, slide notes, transcripts (Markdown)
 ├── Philosophy of AI/
-│   └── SlideMate Chats/        ← your tutor chats (Markdown)
+│   ├── SlideMate Chats/        ← your tutor chats (Markdown)
+│   └── SlideMate Flashcards/   ← each lecture's flashcards (Markdown, plus Anki exports)
 └── _Inbox/               ← drop PDFs here and they get filed into the right course
 ```
 
 SlideMate's own data lives in `~/Library/Application Support/SlideMate`: settings, chats, lecture recordings and
-notes. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
+notes, flashcards and your review history. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
 
 ## Send to iPad auto-select
 
@@ -235,6 +248,7 @@ PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) th
 | AI providers (Claude Code / Codex) | `server/providers.py` |
 | MCP connections + client | `server/mcp.py` |
 | Lecture recording → notes | `server/lecture.py` |
+| Flashcards + FSRS scheduling | `server/flashcards.py` |
 | UI | `server/static/` |
 | Native app + AirDrop helper | `macos/` |
 

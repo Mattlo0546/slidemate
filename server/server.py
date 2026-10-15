@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import config
+import flashcards
 import lecture
 import library as lib
 import mcp
@@ -253,6 +254,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(lecture.get(arg("id")))
             if u.path == "/api/lecture/audio":
                 return self._audio(lecture.audio_path(arg("id")))
+            if u.path == "/api/cards/overview":
+                return self._json(flashcards.overview())
+            if u.path == "/api/cards/deck":
+                deck = flashcards.load(arg("path")) or {"path": arg("path"), "subtopics": [], "cards": []}
+                deck.pop("log", None)
+                msgs = lib.load_chat(arg("path"))["messages"]
+                ret = flashcards.retention()
+                for c in deck["cards"]:
+                    c["previews"] = flashcards.previews(c, ret=ret)
+                return self._json({**deck, "job": flashcards.job(arg("path")), "counts": flashcards.counts(deck),
+                                   "lectures_done": len(flashcards.lectures_for(arg("path"))),
+                                   "questions": len(flashcards._own_questions(msgs)),
+                                   "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0})
+            if u.path == "/api/cards/queue":
+                return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic")))
             return self._json({"error": "unknown"}, 404)
         rel = "index.html" if u.path in ("/", "") else urllib.parse.unquote(u.path.lstrip("/"))
         f = (config.STATIC / rel).resolve()
@@ -416,6 +432,21 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/lecture/delete":
             lecture.delete(body["id"])
             return self._json({"ok": True})
+        if p == "/api/cards/make":
+            for path in body.get("paths") or [body.get("path")]:
+                if path and os.path.isfile(path):
+                    flashcards.request(path, body.get("mode", "auto"), body.get("why", "manual"))
+            return self._json({"ok": True, "job": flashcards.job(body.get("path"))})
+        if p == "/api/cards/review":
+            return self._json(flashcards.review(body["path"], body["id"], int(body["rating"])))
+        if p == "/api/cards/undo":
+            return self._json(flashcards.undo(body["path"], body["id"]))
+        if p == "/api/cards/edit":
+            return self._json(flashcards.edit(body["path"], body["id"], body))
+        if p == "/api/cards/delete-deck":
+            return self._json(flashcards.delete_deck(body["path"]))
+        if p == "/api/cards/export":
+            return self._json(flashcards.export_anki(body["path"]))
         return self._json({"error": "unknown"}, 404)
 
     def _upload(self):
@@ -535,6 +566,8 @@ def housekeeping():
                     lib.sort_inbox()
                 if n % 20 == 0:
                     lib.classify_pending()
+                if n % 4 == 0:
+                    flashcards.check_chats()
         except Exception as e:
             print("housekeeping", e, flush=True)
         n += 1
@@ -570,7 +603,9 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
+    lecture.ON_NOTES_DONE.append(flashcards.on_notes_done)
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
+    threading.Timer(20, flashcards.catch_up).start()  # and flashcards that weren't made because the app quit
     threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
