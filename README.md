@@ -91,8 +91,10 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
   [Google Classroom](https://github.com/Mattlo0546/classroom-mcp) MCP server, and the tutor can check deadlines and
   announcements mid-answer. A **Pull** button syncs new slides automatically.
 - **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
+- **Updates itself**: when a new release is out, SlideMate offers to install it and relaunch (or SlideMate → Check for
+  Updates…).
 - **Private by design**: everything stays on your Mac. The only thing sent anywhere is your question to the AI provider you
-  chose.
+  chose (plus a daily check of GitHub for a new release, which sends nothing about you).
 
 > The demo above uses an original sample lecture made for SlideMate. Answers are real, generated live by Claude.
 
@@ -135,6 +137,9 @@ The app isn't notarised by Apple yet, so the first time you open it macOS will b
   and click **Open Anyway**.
 - **macOS 13–14:** right-click SlideMate → **Open** → **Open**.
 - **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
+
+You only do this once. From 0.3.0 on, SlideMate checks GitHub once a day and offers **Install and Relaunch** when a new
+version is out, so later updates open without the prompt. Choose SlideMate → **Check for Updates…** to check now.
 
 You'll also need:
 - **Claude Code or Codex CLI, signed in.** These are the AI that does the tutoring (see the table below).
@@ -251,7 +256,7 @@ PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) th
 | Lecture recording → notes | `server/lecture.py` |
 | Flashcards + FSRS scheduling | `server/flashcards.py` |
 | UI | `server/static/` |
-| Native app + AirDrop helper | `macos/` |
+| Native app (window, updater) + AirDrop helper | `macos/` |
 
 The server only listens on localhost and requires a custom header on every API call, so web pages can't reach it.
 
