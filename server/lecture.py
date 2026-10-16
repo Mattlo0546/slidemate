@@ -68,10 +68,15 @@ def deck_info(path):
 
 
 def list_for_deck(path):
+    return [m for m in list_all() if m.get("deck") == path]
+
+
+def list_all():
+    """Every lecture on this Mac, newest first (for Settings → Lecture recording)."""
     out = []
     for d in LECTURES.iterdir():
         m = lib._load(d / "meta.json", None)
-        if m and m.get("deck") == path:
+        if m and m.get("id") and m.get("status") != "deleted":
             out.append(m)
     return sorted(out, key=lambda m: m.get("started", 0), reverse=True)
 
@@ -199,6 +204,8 @@ def _live_loop(lid):
         else:
             keep, next_off = sents, dur
         with _lock(lid):
+            if load_meta(lid).get("status") != "recording":  # stopped or discarded while transcribing
+                return
             live = lib._load(ldir(lid) / "live.json", [])
             live.extend(keep)
             lib._save(ldir(lid) / "live.json", live)
@@ -464,11 +471,13 @@ def delete(lid):
     p = _caffeinate.pop(lid, None)
     if p:
         p.terminate()
-    m = load_meta(lid)
-    save_meta(lid, status="deleted")
-    for f in (m.get("files") or {}).values():
-        Path(f).unlink(missing_ok=True)
-    shutil.rmtree(ldir(lid), ignore_errors=True)
+    HEARTBEAT.pop(lid, None)
+    with _lock(lid):
+        m = load_meta(lid)
+        save_meta(lid, status="deleted")
+        for f in (m.get("files") or {}).values():
+            Path(f).unlink(missing_ok=True)
+        shutil.rmtree(ldir(lid), ignore_errors=True)
 
 
 def get(lid):

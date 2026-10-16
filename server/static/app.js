@@ -1316,6 +1316,7 @@ async function openSettings(firstRun = false, pane) {
     : `Needs ffmpeg and Parakeet: <code>${esc(r.install)}</code>. Importing a transcript works without them.`;
   $('#recBadge').textContent = ready ? '✓ Ready' : 'Not installed';
   $('#recBadge').className = 'pill-status ' + (ready ? 'ok' : 'bad');
+  renderRecList();
   const p = lib.paths || {};
   const rows = [['Your slides', (p.roots || []).join(', ')], ['Inbox', p.inbox, 'Drop PDFs here and they get filed into the right course.'],
     ['SlideMate data', p.data, 'Settings, chats, lecture notes and recordings.'], ['Screenshots sent to iPad', p.snaps]];
@@ -1324,6 +1325,32 @@ async function openSettings(firstRun = false, pane) {
     <button type="button" class="small" data-reveal="${esc(path.split(', ')[0])}">Show in Finder</button></div>`).join('');
   refreshTrust();
 }
+// ---------- Settings → Lecture recording → Your recordings ----------
+const REC_STATUS = { recording: 'Recording now', transcribing: 'Transcribing…', writing: 'Writing notes…', error: 'Failed' };
+async function renderRecList() {
+  const el = $('#recList');
+  let all;
+  try { all = await (await api('/api/lectures/all')).json(); } catch { all = []; }
+  el.innerHTML = all.length ? all.map((m) => {
+    const when = m.started ? new Date(m.started * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : (m.date || '');
+    const bits = [m.course && shortCourse(m.course), when, m.duration && fmtT(m.duration), REC_STATUS[m.status],
+                  m.source && m.source !== 'recorded' && 'imported'].filter(Boolean);
+    return `<div class="mcp"><div class="body"><b title="${esc(m.deck || '')}">${esc(m.deck_title || 'Lecture')}</b>
+      <div class="sub">${esc(bits.join(' · '))}</div></div>
+      <button type="button" class="small ghost" data-rec-rm="${esc(m.id)}" title="Delete this recording">${rec?.id === m.id ? 'Discard' : 'Delete'}</button></div>`;
+  }).join('') : '<div class="hint">No recordings yet.</div>';
+}
+$('#recList').addEventListener('click', async (e) => {
+  const id = e.target.closest('[data-rec-rm]')?.dataset.recRm;
+  if (!id) return;
+  if (rec?.id === id) { await discardRecording(); return renderRecList(); }
+  if (!confirm('Delete this recording? Its audio, transcript and notes (including the Markdown files) are removed for good.')) return;
+  await post('/api/lecture/delete', { id });
+  if (lec.cur === id) lec.cur = null;
+  if (state.path) loadLectures(state.path, lec.cur);
+  renderRecList();
+  toast('Recording deleted');
+});
 // ---------- MCP connections ----------
 const mcpTools = {};   // server → [tool names] (from the last Test)
 function renderMcp() {
@@ -1749,10 +1776,12 @@ async function pump() {
           const res = await api(`/api/lecture/chunk?id=${r.id}&seq=${seq}`, { method: 'POST', body: blob });
           if (res.ok || res.status === 409) break;
         } catch {}
+        if (r.discarded) return;
         await new Promise((ok) => setTimeout(ok, delay));
         delay = Math.min(delay * 2, 30000);
       }
       r.queue.shift();
+      if (r.discarded) return;
       if (r.events.length) {
         const ev = r.events.splice(0);
         post('/api/lecture/events', { id: r.id, events: ev }).catch(() => r.events.unshift(...ev));
@@ -1817,8 +1846,27 @@ async function stopRecording(askFirst = true) {
   setPanelTab('notes');
   loadLectures(r.deck, r.id);
 }
+// Recorded by accident (left it on, chatting with friends)? Throw it away: nothing is transcribed or kept.
+async function discardRecording() {
+  if (!rec || !confirm('Discard this recording? The audio and live transcript are deleted and no notes are written.')) return;
+  const r = rec;
+  r.discarded = true;
+  clearInterval(r.timer); clearInterval(r.beat);
+  r.queue.length = 0; r.events.length = 0;
+  r.recorder.ondataavailable = null;
+  try { if (r.recorder.state !== 'inactive') r.recorder.stop(); } catch {}
+  r.stream.getTracks().forEach((t) => t.stop());
+  rec = null;
+  $('#btnRec').hidden = false; $('#recPill').hidden = true;
+  $('#btnRecPause').innerHTML = '<svg><use href="#i-pause"/></svg>';
+  await post('/api/lecture/delete', { id: r.id });
+  if (lec.cur === r.id) lec.cur = null;
+  if (state.path === r.deck) loadLectures(r.deck);
+  toast('Recording discarded');
+}
 $('#btnRec').onclick = startRecording;
 $('#btnRecStop').onclick = () => stopRecording(true);
+$('#btnRecDiscard').onclick = discardRecording;
 // Used by the Mac app before quitting / closing the window (see macos/SlideMate/main.swift).
 window.__slidemateRecording = () => (rec ? { recording: true, seconds: Math.round(audioTime()), deck: state.name } : { recording: false });
 window.__slidemateStopRecording = async () => { await stopRecording(false); return true; };
@@ -2520,8 +2568,8 @@ notesMenu.addEventListener('click', (e) => {
   if (a === 'import') openImport();
   if (a === 'regen') regenNotes();
   if (a === 'reveal') { const f = lec.data?.meta?.files?.summary; f ? post('/api/reveal', { path: f }) : toast('No notes written yet'); }
-  if (a === 'delete' && lec.cur && confirm('Delete this lecture? Its recording, transcript and notes (including the Markdown files) are removed.')) {
-    if (rec?.id === lec.cur) return toast('Stop the recording first', true);
+  if (a === 'delete' && rec?.id === lec.cur) discardRecording();
+  else if (a === 'delete' && lec.cur && confirm('Delete this lecture? Its recording, transcript and notes (including the Markdown files) are removed.')) {
     post('/api/lecture/delete', { id: lec.cur }).then(() => { lec.cur = null; loadLectures(state.path); });
   }
 });

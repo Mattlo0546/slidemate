@@ -315,6 +315,10 @@ body.first-run #settingsTitle, body.first-run #btnSettingsCancel, body.first-run
 .mcp .sub { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcp .res { font-size: 11.5px; color: var(--muted); }
 .mcp .res.ok { color: var(--dot); }
+#recList { padding: 0 12px 10px; }
+#recList .mcp b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+#recList .sub { font: 11.5px -apple-system, system-ui, sans-serif; }
+#recList .hint { padding: 2px 0 4px; }
 .mcp .res.bad { color: #e5a50a; }
 .mcp label.check { margin: 0; font-size: 12px; white-space: nowrap; }
 .subpanel { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 10px 12px; margin: 4px 0 12px; }

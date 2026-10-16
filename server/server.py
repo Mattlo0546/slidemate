@@ -303,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(f, MIME[f.suffix])
             if u.path == "/api/lectures":
                 return self._json(lecture.list_for_deck(arg("path")))
+            if u.path == "/api/lectures/all":
+                return self._json(lecture.list_all())
             if u.path == "/api/lecture":
                 return self._json(lecture.get(arg("id")))
             if u.path == "/api/lecture/audio":
