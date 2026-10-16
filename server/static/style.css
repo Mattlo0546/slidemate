@@ -460,7 +460,12 @@ dialog .line label { flex: 1; margin-bottom: 0; }
 .set-welcome p { margin: 4px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
 .set-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px 14px 28px; border-top: 1px solid var(--border); }
 body.first-run .set-nav, body.first-run #btnSettingsClose, body.first-run #paneTitle { display: none; }
-body.first-run .set-body .pane[data-pane="general"], body.first-run .set-body .pane[data-pane="ai"], body.first-run .set-body .pane[data-pane="ipad"] { display: block; }
+body.first-run .set-body .pane[data-pane="general"], body.first-run .set-body .pane[data-pane="ai"] { display: block; }
+/* First run: only the two things SlideMate can't work without. The rest is in Settings later. */
+body.first-run #modelRow, body.first-run .pane[data-pane="general"] .set-group + .set-group { display: none; }
+body.first-run .pane[data-pane="general"] .set-label b::before { content: "1 · "; color: var(--muted); }
+body.first-run .pane[data-pane="ai"] .set-group:first-child .set-label b::before { content: "2 · "; color: var(--muted); }
+#btnSettingsSave:disabled { opacity: .45; cursor: default; }
 body.first-run .set-head { padding-bottom: 0; }
 @media (max-width: 700px) { .set-nav { width: 64px; } .set-nav button { font-size: 0; justify-content: center; } .set-nav-title { display: none; } .pcards { grid-template-columns: 1fr; } }
 #settings .pcard code.cmd { font: 11px ui-monospace, Menlo, monospace; color: var(--text-2); background: var(--hover); padding: 4px 6px; border-radius: 6px; user-select: all; }

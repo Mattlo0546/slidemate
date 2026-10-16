@@ -123,7 +123,8 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
 ```
 
-Either way you need **Claude Code** *or* **Codex** signed in. The setup screen checks this and has a Sign in button.
+Either way you need a Claude Pro/Max or ChatGPT plan. The setup screen installs Claude Code or Codex and signs you in
+with one click (and SlideMate installs Apple's Command Line Tools itself if they're missing).
 
 ---
 
@@ -143,7 +144,7 @@ version is out, so later updates open without the prompt. Choose SlideMate → *
 
 You'll also need:
 - **Claude Code or Codex CLI, signed in.** These are the AI that does the tutoring (see the table below).
-- **Apple's Command Line Tools** for Python: `xcode-select --install`. Most developers already have them.
+- **Apple's Command Line Tools** for Python. If they're missing, SlideMate opens Apple's installer for you on first launch.
 - **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for ChatGPT slide text and lecture
   recording. The setup screen tells you if anything is missing.
 

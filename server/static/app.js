@@ -1146,28 +1146,63 @@ function renderRoots() {
   $('#rootList').innerHTML = (draft.library_roots || []).map((r, i) => `<div class="root"><span title="${esc(r)}">${esc(r)}</span><button type="button" data-rm="${i}" title="Remove">✕</button></div>`).join('')
     || '<div class="hint">No folder chosen yet.</div>';
 }
-$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); saveSettings(); } });
+$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); saveSettings(); updateGate(); } });
 async function pickFolder() {
   const native = window.webkit?.messageHandlers?.slidemate;
   if (native) return new Promise((done) => { window.__slidemateFolder = done; native.postMessage({ action: 'pickFolder' }); });
   return (await post('/api/pick-folder')).path;  // browser / dev mode: AppleScript dialog
 }
-function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); saveSettings(); } }
+function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); saveSettings(); updateGate(); } }
 $('#btnAddRoot').onclick = async () => addRoot(await pickFolder());
 $('#btnStarter').onclick = async () => { addRoot((await post('/api/starter-folder')).path); toast('Created Documents/SlideMate: add a folder per course, or drop PDFs into it'); };
+// Install / sign-in run in a Terminal window; while one is open (or the chosen AI isn't ready) the status is
+// re-checked every few seconds, so the setup screen updates by itself when the user finishes.
+const providerReady = (id) => !!(sysStatus?.providers?.[id]?.installed && sysStatus.providers[id].logged_in);
+const setupPending = {};
+let statusPoll = null, statusBusy = false;
+function watchStatus() {
+  if (statusPoll) return;
+  statusPoll = setInterval(async () => {
+    if (!$('#settings').open) { clearInterval(statusPoll); statusPoll = null; return; }
+    if (statusBusy) return;
+    statusBusy = true;
+    const before = JSON.stringify(sysStatus?.providers);
+    try { await loadStatus(); } finally { statusBusy = false; }
+    if (JSON.stringify(sysStatus.providers) === before) return;
+    for (const id of Object.keys(setupPending)) {
+      if (providerReady(id)) { delete setupPending[id]; toast(`✓ Signed in to ${id === 'codex' ? 'ChatGPT' : 'Claude'}`); }
+    }
+    readModelFields();
+    if (!providerReady(draft.provider)) {  // pick whichever AI just became ready
+      const ok = ['claude', 'codex'].find(providerReady);
+      if (ok) { draft.provider = ok; saveSettings(); }
+    }
+    renderProviders();
+    if (providerReady(draft.provider) && !Object.keys(setupPending).length) { clearInterval(statusPoll); statusPoll = null; }
+  }, 3000);
+}
+function updateGate() {
+  if (!document.body.classList.contains('first-run')) return;
+  const need = !(draft.library_roots || []).length ? 'Next: choose the folder with your lecture slides.'
+    : !providerReady(draft.provider) ? `Next: ${sysStatus?.providers?.[draft.provider]?.installed ? 'sign in to' : 'set up'} ${draft.provider === 'codex' ? 'ChatGPT' : 'Claude'} (or pick the other AI).`
+    : '';
+  $('#btnSettingsSave').disabled = !!need;
+  $('#setFootHint').textContent = need || 'All set. You can change any of this later in Settings (⌘,).';
+}
 function renderProviders() {
   const ps = sysStatus?.providers || {};
   const card = (id, name, sub) => {
     const s = ps[id] || {};
-    const state = !s.installed ? `<span class="pill-status bad">Not installed</span><code class="cmd">${esc(s.install || '')}</code>`
-      : !s.logged_in ? `<span class="pill-status bad">Not signed in</span><div class="acts"><button type="button" class="small" data-login="${id}">Sign in…</button></div>`
+    const waiting = setupPending[id] && !(s.installed && s.logged_in);
+    const state = waiting ? `<span class="pill-status"><span class="spinner"></span>Finish in the Terminal window…</span>`
+      : !s.installed ? `<span class="pill-status bad">Not installed</span><div class="acts"><button type="button" class="small primary" data-install="${id}">Install &amp; sign in</button></div>`
+      : !s.logged_in ? `<span class="pill-status bad">Not signed in</span><div class="acts"><button type="button" class="small primary" data-login="${id}">Sign in…</button></div>`
       : `<span class="pill-status ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
     return `<label class="pcard ${draft.provider === id ? 'on' : ''}"><input type="radio" name="prov" value="${id}" ${draft.provider === id ? 'checked' : ''}>
       <div class="body"><b>${name}</b><div class="st">${sub}</div></div>${state}</label>`;
   };
-  $('#providerCards').innerHTML = card('claude', 'Claude', 'Claude Code · your Claude Pro/Max account. Reads slides natively.')
-    + card('codex', 'ChatGPT', 'Codex CLI · your ChatGPT account.')
-    + `<button type="button" class="small ghost" id="btnRecheck">Re-check sign-in</button>`;
+  $('#providerCards').innerHTML = card('claude', 'Claude', 'Your Claude Pro or Max plan (via Claude Code). Reads slides natively.')
+    + card('codex', 'ChatGPT', 'Your ChatGPT plan (via the Codex app).');
   const pdfHint = draft.provider === 'codex' && sysStatus && !sysStatus.pdftools
     ? '<div class="set-label" style="grid-column:1/-1"><span>ChatGPT reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>' : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
@@ -1178,12 +1213,23 @@ function renderProviders() {
          <input id="setCodexModel" class="set-input" value="${esc(draft.codex_model || '')}" placeholder="Codex default"></label>`
     : `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
        <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, draft.claude_notes_model)}</label>`;
+  updateGate();
+  if (!providerReady(draft.provider) || Object.keys(setupPending).length) watchStatus();
 }
 $('#providerCards').addEventListener('change', (e) => { if (e.target.name === 'prov') { readModelFields(); draft.provider = e.target.value; renderProviders(); } });
 $('#providerCards').addEventListener('click', async (e) => {
-  const l = e.target.closest('[data-login]');
-  if (l) { e.preventDefault(); await post('/api/login', { provider: l.dataset.login }); toast('Finish signing in in the Terminal window that opened, then press Re-check.', false, 9000); }
-  if (e.target.id === 'btnRecheck') { e.preventDefault(); await loadStatus(); renderProviders(); }
+  const b = e.target.closest('[data-login], [data-install]');
+  if (!b) return;
+  e.preventDefault();
+  const id = b.dataset.login || b.dataset.install;
+  readModelFields();
+  if (draft.provider !== id) { draft.provider = id; saveSettings(); }
+  const r = await post('/api/login', { provider: id, install: !!b.dataset.install });
+  if (!r.ok) return toast("Couldn't open Terminal. Try again, or see the README for the manual steps.", true);
+  setupPending[id] = true;
+  renderProviders();
+  toast(b.dataset.install ? 'A Terminal window opened: it installs, then opens your browser to sign in. SlideMate notices when you’re done.'
+    : 'Sign in in your browser (from the Terminal window that opened). SlideMate notices when you’re done.', false, 9000);
 });
 function readModelFields() {
   if ($('#setCodexModel')) draft.codex_model = $('#setCodexModel').value.trim();
@@ -1468,6 +1514,7 @@ $('#settings').addEventListener('close', () => { if (!document.body.classList.co
 $('#btnSettingsSave').onclick = async () => {  // first run: "Get started"
   const payload = settingsPayload();
   if (!payload.library_roots.length) { showPane('general'); return toast('Choose your slides folder first', true); }
+  if (!providerReady(payload.provider)) return toast('Set up Claude or ChatGPT first', true);
   cfg = await post('/api/config', { ...payload, setup_done: true });
   document.body.classList.remove('first-run');
   $('#settings').close();

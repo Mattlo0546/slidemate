@@ -134,8 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             || FileManager.default.fileExists(atPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/python3")
         let pythons = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] + (cltInstalled ? ["/usr/bin/python3"] : [])
         guard let python = pythons.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            return done(false, "SlideMate needs Python 3, which comes with Apple's free Command Line Tools.\n\n"
-                        + "Open Terminal, run:   xcode-select --install\nthen reopen SlideMate.")
+            return installCommandLineTools { [weak self] in self?.spawnServer(done) }
         }
         try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
         let logURL = logDir.appendingPathComponent("server.log")
@@ -174,11 +173,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         poll()
     }
 
-    func showMessage(_ title: String, detail: String = "") {
+    /// SlideMate runs on the Python that comes with Apple's free Command Line Tools. `xcode-select --install`
+    /// shows Apple's own installer dialog; once it has finished, carry on starting up.
+    func installCommandLineTools(then next: @escaping () -> Void) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+        p.arguments = ["--install"]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        showMessage("One more thing: Apple's Command Line Tools",
+                    note: "SlideMate runs on Python, which comes with Apple's free Command Line Tools. Click <b>Install</b> in the "
+                        + "window that just opened and agree to the licence. It takes 5–10 minutes, and SlideMate starts by itself "
+                        + "when it's done.<br><br>Don't see the window? Quit and reopen SlideMate.")
+        func wait() {
+            let ready = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+                         "/opt/homebrew/bin/python3", "/usr/local/bin/python3"].contains { FileManager.default.isExecutableFile(atPath: $0) }
+            if ready { return next() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wait)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wait)
+    }
+
+    func showMessage(_ title: String, detail: String = "", note: String = "") {
         let esc = { (s: String) in s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;") }
+        let noteHTML = note.isEmpty ? "" : "<p style='line-height:1.5'>\(note)</p>"
         let html = """
         <html><body style="font:14px -apple-system;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;
-        color:#888;background:transparent"><div style="max-width:640px;text-align:center"><p style="font-size:15px;color:#999">\(esc(title))</p>
+        color:#888;background:transparent"><div style="max-width:640px;text-align:center"><p style="font-size:15px;color:#999">\(esc(title))</p>\(noteHTML)
         <pre style="text-align:left;white-space:pre-wrap;font:11px Menlo;color:#888">\(esc(detail))</pre></div></body></html>
         """
         web.loadHTMLString(html, baseURL: nil)

@@ -392,7 +392,7 @@ class Handler(BaseHTTPRequestHandler):
                 "files them into the right course for you.\n")
             return self._json({"path": str(root)})
         if p == "/api/login":
-            return self._json({"ok": providers.open_login_terminal(body.get("provider", "claude"))})
+            return self._json({"ok": providers.open_setup_terminal(body.get("provider", "claude"), bool(body.get("install")))})
         if p == "/api/library/manage":
             return self._json(lib.manage(body.get("target", ""), body.get("action", ""), body.get("title")))
         if p == "/api/library/set":

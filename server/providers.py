@@ -620,13 +620,42 @@ def model_for(kind="chat"):
     return cfg["claude_notes_model"] if kind == "notes" else cfg["claude_model"]
 
 
-def open_login_terminal(name):
-    """Sign-in flows are interactive, so run them in Terminal where the user can see them."""
-    p = PROVIDERS[name]
-    b = p.bin()
-    if not b:
+BREW_INSTALL = ('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n'
+                'eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"')
+
+
+def setup_script(name, install):
+    """Shell steps that install (if asked) and sign in to a provider's CLI, for a Terminal window."""
+    if name == "claude":
+        steps = ['echo "Installing Claude Code…"', "curl -fsSL https://claude.ai/install.sh | bash || exit 1"] if install else []
+        steps += ['echo; echo "Signing in. Your browser opens; sign in with your Claude Pro or Max account."',
+                  f'"{PROVIDERS["claude"].bin() or "$HOME/.local/bin/claude"}" auth login || exit 1']
+        return steps
+    steps = []
+    if install:
+        if config.which("brew"):
+            steps += [f'"{config.which("brew")}" install codex || exit 1']
+        elif config.which("npm"):
+            steps += [f'"{config.which("npm")}" install -g @openai/codex || exit 1']
+        else:
+            steps += ['echo "Codex installs with Homebrew, which asks for your Mac password once."', BREW_INSTALL,
+                      "brew install codex || exit 1"]
+    steps += ['echo; echo "Signing in. Your browser opens; sign in with your ChatGPT account."',
+              f'"{PROVIDERS["codex"].bin()}" login || exit 1' if PROVIDERS["codex"].bin() and not install else "codex login || exit 1"]
+    return steps
+
+
+def open_setup_terminal(name, install=False):
+    """Install and sign-in are interactive (browser sign-in, maybe a password), so they run in a Terminal window
+    the user can see. SlideMate notices by itself when sign-in has finished."""
+    if name not in PROVIDERS or (not install and not PROVIDERS[name].bin()):
         return False
-    cmd = f"'{b}' auth login" if name == "claude" else f"'{b}' login"
-    script = f'tell application "Terminal"\nactivate\ndo script "{cmd}"\nend tell'
-    subprocess.Popen(["osascript", "-e", script])
+    path = config.DATA / "setup" / f"{name}-setup.command"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/bash\n"
+                    f'export PATH="{config.ENV["PATH"]}"\n'
+                    "clear\n" + "\n".join(setup_script(name, install)) + "\n"
+                    'echo; echo "✓ Done. You can close this window and go back to SlideMate."\n')
+    path.chmod(0o755)
+    subprocess.Popen(["open", "-a", "Terminal", str(path)])
     return True
