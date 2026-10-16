@@ -31,7 +31,8 @@ def which(name):
 DEFAULTS = {
     "setup_done": False,
     "library_roots": [],            # folders that hold your courses (each sub-folder = one course)
-    "provider": "claude",           # "claude" (Claude Code), "codex" (Codex CLI), "cursor" (Cursor CLI) or "grok" (Grok CLI)
+    "provider": "claude",           # "claude" (Claude Code), "codex" (Codex CLI), "cursor" (Cursor CLI), "grok" (Grok CLI)
+                                    # "antigravity" (Antigravity CLI) or "ollama" (a local model)
     "claude_model": "sonnet",
     "claude_notes_model": "opus",
     "claude_effort": "",            # "" = default, or low / medium / high / xhigh / max
@@ -40,6 +41,9 @@ DEFAULTS = {
     "cursor_model": "",             # blank = Cursor default (Auto); effort is part of Cursor's model names
     "grok_model": "",               # blank = Grok default
     "grok_effort": "",              # "" = model default
+    "antigravity_model": "",        # blank = Antigravity default
+    "antigravity_effort": "",       # "" = model default
+    "ollama_model": "",             # blank = the first downloaded model that can see images
     "ipad_name": "",
     "rec_limit_min": 120,  # stop + save a lecture recording after this long (0 = no limit)
     "airdrop": True,

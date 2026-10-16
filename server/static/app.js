@@ -970,7 +970,9 @@ if (store.get('libHidden', false)) document.body.classList.add('lib-hidden');
 
 // ---------- settings + first-run setup ----------
 let sysStatus = null;
-const PROVIDER_NAMES = { claude: 'Claude', codex: 'ChatGPT', cursor: 'Cursor', grok: 'Grok' };
+const PROVIDER_NAMES = { claude: 'Claude', codex: 'ChatGPT', cursor: 'Cursor', grok: 'Grok', antigravity: 'Antigravity', ollama: 'Ollama' };
+// Providers whose model is picked from a list in Settings (the list comes from the CLI or app).
+const MODEL_FIELDS = { cursor: 'setCursorModel', grok: 'setGrokModel', antigravity: 'setAntigravityModel', ollama: 'setOllamaModel' };
 const providerLabel = () => PROVIDER_NAMES[cfg.provider] || 'Claude';
 async function refreshTrust() {
   $('#trustStatus').textContent = 'Checking auto-select…';
@@ -999,7 +1001,7 @@ function renderProviders() {
   const card = (id, name, sub) => {
     const s = ps[id] || {};
     const state = !s.installed ? `<span class="pill-status bad">Not installed</span><code class="cmd">${esc(s.install || '')}</code>`
-      : !s.logged_in ? `<span class="pill-status bad">Not signed in</span><div class="acts"><button type="button" class="small" data-login="${id}">Sign in…</button></div>`
+      : !s.logged_in ? `<span class="pill-status bad">${esc(s.not_ready || 'Not signed in')}</span><div class="acts"><button type="button" class="small" data-login="${id}">${esc(s.login_label || 'Sign in…')}</button></div>`
       : `<span class="pill-status ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
     return `<label class="pcard ${draft.provider === id ? 'on' : ''}"><input type="radio" name="prov" value="${id}" ${draft.provider === id ? 'checked' : ''}>
       <div class="body"><b>${name}</b><div class="st">${sub}</div></div>${state}</label>`;
@@ -1008,6 +1010,8 @@ function renderProviders() {
     + card('codex', 'ChatGPT', 'Codex CLI · your ChatGPT account.')
     + card('cursor', 'Cursor', 'Cursor CLI · your Cursor account, with any model Cursor offers.')
     + card('grok', 'Grok', 'Grok CLI · your grok.com / SuperGrok account.')
+    + card('antigravity', 'Antigravity', 'Antigravity CLI · your Google account, free plan included. Gemini, plus Claude and GPT-OSS models.')
+    + card('ollama', 'On this Mac (Ollama)', 'A free model that runs offline on your Mac. Slower and simpler answers; best with 16 GB of memory or more.')
     + `<button type="button" class="small ghost" id="btnRecheck">Re-check sign-in</button>`;
   const pdfHint = draft.provider !== 'claude' && sysStatus && !sysStatus.pdftools
     ? `<div class="set-label" style="grid-column:1/-1"><span>${PROVIDER_NAMES[draft.provider]} reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>` : '';
@@ -1018,12 +1022,14 @@ function renderProviders() {
   if (p === 'codex') {
     $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>Leave blank to use your Codex default. You can also switch from the chat box.</span></div>
          <input id="setCodexModel" class="set-input" value="${esc(draft.codex_model || '')}" placeholder="Codex default"></label>`;
-  } else if (p === 'cursor' || p === 'grok') {
+  } else if (MODEL_FIELDS[p]) {
     const list = setCat?.[p]?.models, cur = draft[`${p}_model`] || '';
-    const opts = [['', `${PROVIDER_NAMES[p]} default`], ...(list || []).map((m) => [m.id, m.label])];
+    const opts = [['', p === 'ollama' ? 'Best downloaded model' : `${PROVIDER_NAMES[p]} default`], ...(list || []).map((m) => [m.id, m.label])];
     if (cur && !opts.some(([v]) => v === cur)) opts.push([cur, cur]);
-    const hint = list ? 'Used for chat and lecture notes. You can also switch it from the chat box.' : 'Loading the models on your account…';
-    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>${hint}</span></div>${sel(p === 'cursor' ? 'setCursorModel' : 'setGrokModel', opts, cur)}</label>`;
+    const hint = !list ? (p === 'ollama' ? 'Looking for models on this Mac…' : 'Loading the models on your account…')
+      : p === 'ollama' && !list.length ? 'No models yet. Download one with the button above (qwen3-vl:8b, about 6 GB, can see slides).'
+      : 'Used for chat and lecture notes. You can also switch it from the chat box.';
+    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>${hint}</span></div>${sel(MODEL_FIELDS[p], opts, cur)}</label>`;
     if (!list && !setCatLoading) loadSetCat();
   } else {
     $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
@@ -1047,6 +1053,8 @@ function readModelFields() {
   if ($('#setCodexModel')) draft.codex_model = $('#setCodexModel').value.trim();
   if ($('#setCursorModel')) draft.cursor_model = $('#setCursorModel').value;
   if ($('#setGrokModel')) draft.grok_model = $('#setGrokModel').value;
+  if ($('#setAntigravityModel')) draft.antigravity_model = $('#setAntigravityModel').value;
+  if ($('#setOllamaModel')) draft.ollama_model = $('#setOllamaModel').value;
   if ($('#setClaudeModel')) { draft.claude_model = $('#setClaudeModel').value; draft.claude_notes_model = $('#setClaudeNotes').value; }
 }
 async function loadStatus() { sysStatus = await (await api('/api/status')).json(); }
@@ -1128,7 +1136,7 @@ $('#mcpList').addEventListener('change', async (e) => {
 $('#btnMcpImport').onclick = async () => {
   const box = $('#mcpImport');
   box.hidden = false; $('#mcpForm').hidden = true;
-  box.innerHTML = '<div class="hint">Looking for MCP servers in Claude Desktop, Claude Code, Codex, Cursor and Grok…</div>';
+  box.innerHTML = '<div class="hint">Looking for MCP servers in Claude Desktop, Claude Code, Codex, Cursor, Grok and Antigravity…</div>';
   const found = await (await api('/api/mcp/discover')).json();
   const names = Object.keys(found).filter((n) => !found[n].added);
   box.innerHTML = names.length ? names.map((n) => `<label class="imp"><input type="checkbox" value="${esc(n)}"><b>${esc(n)}</b>
@@ -1200,13 +1208,13 @@ function renderModelBtn() {
 function effortsFor(c) {
   if (c.efforts) return c.efforts;  // Claude: one list; Cursor: none (effort is part of the model name)
   const m = c.models.find((x) => x.id === c.model);
-  return m?.efforts || ['low', 'medium', 'high', 'xhigh'];
+  return m?.efforts || c.default_efforts || ['low', 'medium', 'high', 'xhigh'];
 }
 function openModelMenu() {
   const c = provCat();
   if (!c) return;
   const menu = $('#modelMenu');
-  const cli = { codex: 'Codex', cursor: 'Cursor', grok: 'Grok' }[catalog.provider];
+  const cli = { codex: 'Codex', cursor: 'Cursor', grok: 'Grok', antigravity: 'Antigravity', ollama: 'Ollama' }[catalog.provider];
   const models = cli ? [{ id: '', label: 'Default', desc: `Whatever ${cli} is set to use` }, ...c.models] : c.models;
   if (cli && c.model && !models.some((m) => m.id === c.model)) models.push({ id: c.model, label: c.model, desc: '' });
   const efforts = effortsFor(c);
@@ -1302,7 +1310,8 @@ function settingsPayload() {
   return {
     library_roots: draft.library_roots, provider: draft.provider, claude_model: draft.claude_model,
     claude_notes_model: draft.claude_notes_model, codex_model: draft.codex_model,
-    cursor_model: draft.cursor_model, grok_model: draft.grok_model,
+    cursor_model: draft.cursor_model, grok_model: draft.grok_model, antigravity_model: draft.antigravity_model,
+    ollama_model: draft.ollama_model,
     ipad_name: $('#setIpad').value.trim(), airdrop: $('#setAirdrop').checked, copy_to_clipboard: $('#setClip').checked,
     sync_command: mode === 'command' ? $('#setSync').value.trim() : '',
     sync_login_command: mode === 'command' ? $('#setSyncLogin').value.trim() : '',
@@ -1321,7 +1330,7 @@ async function saveSettings(now = false) {
     cfg = await post('/api/config', settingsPayload());
     $('#savedHint').textContent = 'Saved'; $('#savedHint').style.opacity = 1;
     setTimeout(() => { $('#savedHint').style.opacity = 0; }, 1200);
-    if (['provider', 'claude_model', 'codex_model', 'cursor_model', 'grok_model'].some((k) => before[k] !== cfg[k])) loadModels();
+    if (['provider', 'claude_model', 'codex_model', 'cursor_model', 'grok_model', 'antigravity_model', 'ollama_model'].some((k) => before[k] !== cfg[k])) loadModels();
     if (JSON.stringify(before.library_roots) !== JSON.stringify(cfg.library_roots)) loadLibrary();
     if (before.sync_mcp?.tool !== cfg.sync_mcp?.tool || before.sync_command !== cfg.sync_command) loadLibrary();
   };

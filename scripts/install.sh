@@ -70,6 +70,12 @@ if command -v grok >/dev/null; then
   if grok models 2>&1 | grep -qi "logged in with"; then ok "Grok: signed in"; have_ai=1
   else warn "Grok CLI is installed but not signed in. Run: grok login"; fi
 else echo "  • Grok:    curl -fsSL https://x.ai/cli/install.sh | bash   then: grok login"; fi
+if command -v agy >/dev/null; then
+  if agy models >/dev/null 2>&1; then ok "Antigravity: signed in"; have_ai=1
+  else warn "Antigravity CLI is installed but not signed in. Run: agy   (and sign in with Google)"; fi
+else echo "  • Antigravity (free with a Google account): curl -fsSL https://antigravity.google/cli/install.sh | bash   then: agy"; fi
+if command -v ollama >/dev/null && ollama list 2>/dev/null | sed 1d | grep -q .; then ok "Ollama: a local model is ready"; have_ai=1
+else echo "  • On your Mac (free, offline): brew install --cask ollama-app   then: ollama pull qwen3-vl:8b"; fi
 [ $have_ai = 1 ] || warn "Sign in to one of them before asking the tutor anything (SlideMate's setup screen can help)."
 echo
 if [ "${1:-}" = "--build-only" ]; then

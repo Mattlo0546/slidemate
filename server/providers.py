@@ -4,6 +4,10 @@
 - "codex":  Codex CLI (`codex`) using "Sign in with ChatGPT". Gets the deck's text plus an image of your slide.
 - "cursor": Cursor CLI (`cursor-agent`) using your Cursor account. Gets the deck's text; opens the slide image itself.
 - "grok":   Grok CLI (`grok`) using your grok.com / SuperGrok account. Gets the deck's text plus an image of your slide.
+- "antigravity": Antigravity CLI (`agy`) using your Google account (the free plan works). Gets the deck's text;
+  opens the slide image itself.
+- "ollama": a model running on this Mac through Ollama (free, offline). Gets the deck's text plus an image of your
+  slide if the model can see images.
 """
 import base64
 import glob
@@ -14,6 +18,8 @@ import re
 import subprocess
 import time
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -86,8 +92,8 @@ def codex_models():
 
 
 def catalogue(everything=False):
-    """Models + effort for each provider. Cursor's list is a network call, so it's only fetched when Cursor is in
-    use or Settings asks for every list."""
+    """Models + effort for each provider. Cursor's and Antigravity's lists are network calls, so they're only
+    fetched when that provider is in use or Settings asks for every list."""
     cfg = config.load()
     return {"provider": cfg["provider"],
             "claude": {"models": CLAUDE_MODELS, "efforts": CLAUDE_EFFORTS, "model": cfg["claude_model"], "effort": cfg["claude_effort"]},
@@ -95,6 +101,10 @@ def catalogue(everything=False):
             "cursor": {"models": cursor_models(fetch=everything or cfg["provider"] == "cursor"), "efforts": [],
                        "model": cfg["cursor_model"], "effort": ""},
             "grok": {"models": grok_models(), "model": cfg["grok_model"], "effort": cfg["grok_effort"]},
+            "antigravity": {"models": antigravity_models(fetch=everything or cfg["provider"] == "antigravity"),
+                            "default_efforts": AGY_EFFORTS, "model": cfg["antigravity_model"],
+                            "effort": cfg["antigravity_effort"]},
+            "ollama": {"models": ollama_models(), "efforts": [], "model": cfg["ollama_model"], "effort": ""},
             "limits": LIMITS.get(cfg["provider"], [])}
 
 
@@ -962,7 +972,410 @@ class GrokSession(TurnSession):
                              "model": self.model or "default", "limits": [], "at": time.time()})
 
 
-PROVIDERS = {"claude": Claude(), "codex": Codex(), "cursor": Cursor(), "grok": Grok()}
+# ------------------------------------------------------------------ Antigravity CLI (Google account)
+
+
+AGY_EFFORTS = ["low", "medium", "high"]  # what every model listed so far offers
+
+
+def _agy_models_run():
+    """Run `agy models`: (signed in?, models). It lists one `id<TAB>Label` line per model and effort, e.g.
+    `gemini-3.8-flash-high<TAB>Gemini 3.8 Flash (High)`; these are grouped into one model with its efforts."""
+    b = Antigravity.bin()
+    if not b:
+        return False, []
+    try:
+        p = subprocess.run([b, "models"], capture_output=True, text=True, timeout=45, cwd=config.WORK, env=config.ENV)
+    except Exception:
+        return False, []
+    found = {}
+    for line in p.stdout.splitlines():
+        m = re.match(r"^([A-Za-z0-9][\w.\-]*)\t(.+?)\s*$", line)
+        if not m:
+            continue
+        mid, label = m.groups()
+        e = re.match(r"^(.+)-(none|minimal|low|medium|high|xhigh|max)$", mid)
+        base, effort = (e.group(1), e.group(2)) if e else (mid, None)
+        entry = found.setdefault(base, {"id": base, "label": re.sub(r"\s*\([^)]*\)$", "", label), "desc": "", "efforts": []})
+        if effort:
+            entry["efforts"].append(effort)
+    for entry in found.values():
+        entry["efforts"].sort(key=lambda x: EFFORT_ORDER.index(x))
+    models = list(found.values())
+    if models:
+        MODEL_CACHE["antigravity"] = (time.time(), models)
+    return p.returncode == 0 and bool(models), models
+
+
+def antigravity_models(fetch=True):
+    """The models on this Google account (a network call, so cached for an hour)."""
+    at, models = MODEL_CACHE.get("antigravity", (0, []))
+    if not fetch or (models and time.time() - at < 3600):
+        return models
+    return _agy_models_run()[1] or models
+
+
+class Antigravity:
+    name = "antigravity"
+    label = "Antigravity"
+
+    @staticmethod
+    def bin():
+        return config.which("agy")
+
+    def status(self):
+        b = self.bin()
+        st = {"provider": self.name, "installed": bool(b), "logged_in": False,
+              "install": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+              "login": "agy   (then sign in with Google)"}
+        if b:
+            st["logged_in"], _ = _agy_models_run()  # only works signed in, and refreshes the model list
+            st["detail"] = "Google account" if st["logged_in"] else ""
+        return st
+
+    def _cmd(self, model=None, effort="", resume=None):
+        # The prompt goes on stdin as one stream-json message, so a long deck never hits the argument-size limit.
+        # Shell commands, web access and files outside the session folder need permission, which headless mode
+        # can't ask for, so they're refused; MCP tools are allowed by mcp.antigravity_files.
+        cmd = [self.bin(), "--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands"]
+        if model:
+            cmd += ["--model", model]
+            m = next((x for x in antigravity_models(fetch=False) if x["id"] == model), None)
+            if effort and m and m["efforts"] and effort not in m["efforts"]:
+                effort = ""  # e.g. a model with a single effort level
+        if effort:
+            cmd += ["--effort", effort]
+        if resume:
+            cmd += ["--conversation", resume]
+        return cmd
+
+    @staticmethod
+    def message(text):
+        return json.dumps({"event": "user", "message": {"role": "user", "content": text}}) + "\n"
+
+    def session(self, pdf, model):
+        return AntigravitySession(self, pdf, model, config.load()["antigravity_effort"])
+
+    def oneshot(self, prompt, model=None, timeout=600):
+        folder = config.WORK / "antigravity-oneshot"
+        folder.mkdir(parents=True, exist_ok=True)
+        mcp.antigravity_files(folder, with_servers=False)
+        model = model if model is not None else config.load()["antigravity_model"]
+        texts, errors = [], []
+        for ev in _json_events(self._cmd(model or None), folder, timeout, self.message(NO_TOOLS + "\n\n" + prompt)):
+            if ev.get("event") == "result":
+                r = ev.get("result") or {}
+                (texts if r.get("status") == "SUCCESS" else errors).append(r.get("response") or r.get("error") or "")
+            elif ev.get("type") == "_exit" and ev["code"]:
+                errors.append(ev["stderr"])
+        if not any(texts):
+            raise RuntimeError("Antigravity returned nothing. " + " ".join(e for e in errors if e)[:400])
+        return texts[-1]
+
+    def oneshot_json(self, prompt, model=None, timeout=600):
+        return _json_from(self.oneshot(prompt, model, timeout))
+
+    def with_pdf(self, pdf, prompt, model=None, timeout=1800):
+        return self.oneshot(f"FULL DECK TEXT (slide by slide):\n\n{deck_text(pdf)}\n\n---\n\n{prompt}", model, timeout)
+
+
+def _agy_tool_status(step):
+    params = (step.get("tool_info") or {}).get("parameters") or {}
+    if step.get("tool_name") == "call_mcp_tool":
+        return f"Using {params.get('ServerName') or 'a tool'} › {params.get('ToolName', '')}…"
+    if step.get("tool_name") == "view_file" and os.path.basename(str(params.get("AbsolutePath", ""))).startswith("slide-"):
+        return "Looking at the slide…"
+    return None
+
+
+class AntigravitySession(TurnSession):
+    """Antigravity runs once per question and resumes its conversation by id; the slide image is saved in the
+    session's folder for it to open (its stdin only takes text)."""
+
+    def _ask(self, question, page, total, image_b64, context):
+        mcp.antigravity_files(self.dir)
+        parts = [] if self.thread else self._first_parts(total, context)
+        if image_b64:
+            name = f"slide-{page}.jpg"
+            (self.dir / name).write_bytes(base64.b64decode(image_b64))
+            parts.append(f"An image of slide {page} of {total}, which I'm looking at right now, is saved as `{name}` in "
+                         "your workspace. Open it with your file viewer before answering, so you can see its diagrams "
+                         "and equations. Don't mention or link the file itself.")
+        parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
+        said = yield from self._turn("\n\n".join(parts))
+        if said is None:  # a refused tool ended the turn before any answer: say so and ask once more
+            said = yield from self._turn("(That tool isn't available here. Answer my question directly from the deck "
+                                         "and the slide image, without running commands or opening web pages.)")
+            if said is None:
+                yield ("\n\n**Antigravity stopped** after trying to use a tool SlideMate doesn't allow "
+                       "(shell commands and web pages are off). Please ask again.")
+
+    def _turn(self, text):
+        """One CLI run. Returns True if it answered, None if a refused tool ended it silently, False on an error."""
+        said, gap, step, used, done, denied = False, False, None, None, False, False
+        for ev in _json_events(self.p._cmd(self.model or None, self.effort, self.thread), self.dir, 600,
+                               self.p.message(text), on_proc=self._set_proc):
+            if self.cancelled:
+                return False
+            kind = ev.get("event")
+            if kind == "init" and ev.get("conversation_id"):
+                self.thread = ev["conversation_id"]
+            elif kind == "step_update":
+                s = ev.get("step_update") or {}
+                if s.get("step_type") == "agent_response":
+                    delta = s.get("text_delta") or ""
+                    if delta:
+                        yield ("\n\n" if said and (gap or s.get("step_index") != step) else "") + delta
+                        said, gap, step = True, False, s.get("step_index")
+                    u = s.get("usage")
+                    if u:  # per model call, so the latest one is roughly how full the conversation is
+                        used = sum(u.get(k) or 0 for k in ("input_tokens", "cache_read_tokens", "output_tokens"))
+                elif s.get("step_type") == "tool" and s.get("state") == "ACTIVE":
+                    label = _agy_tool_status(s)
+                    if label:
+                        yield ("status", label)
+                    gap = True
+            elif kind == "result":
+                done = True
+                r = ev.get("result") or {}
+                self.thread = r.get("conversation_id") or self.thread
+                if r.get("status") != "SUCCESS":
+                    yield f"\n\n**Antigravity error:** {r.get('error') or r.get('status') or 'unknown error'}"
+                    return False
+                if not said and (r.get("response") or "").strip():
+                    yield r["response"]
+                    said = True
+                denied = bool(r.get("denied_actions"))
+            elif ev.get("type") == "_exit" and ev["code"] and not done:
+                self.thread = None  # start a fresh conversation (with the deck and our chat history) next time
+                yield _say_cli_failed("Antigravity", ev)
+                return False
+        if used is not None:
+            yield ("usage", {"context_used": used, "context_window": None, "model": self.model or "default",
+                             "limits": [], "at": time.time()})
+        return True if said else (None if denied else False)
+
+
+# ------------------------------------------------------------------ Ollama (a model running on this Mac)
+
+
+_OLLAMA_HOST = os.environ.get("OLLAMA_HOST") or "127.0.0.1:11434"
+OLLAMA_URL = (_OLLAMA_HOST if "://" in _OLLAMA_HOST else "http://" + _OLLAMA_HOST).rstrip("/").replace("0.0.0.0", "127.0.0.1")
+OLLAMA_SUGGESTED = "qwen3-vl:8b"  # sees images, ~6 GB, fits a 16 GB Mac
+OLLAMA_MAX_CTX = 32768   # tokens for deck + chat: about 5 GB of memory on top of an 8B model
+OLLAMA_ANSWER_ROOM = 6144  # tokens kept free for the answer
+CHARS_PER_TOKEN = 3.2      # rough, for sizing the context before Ollama has counted anything
+SHOW_CACHE = {}  # (model, digest) → /api/show
+
+
+def _ollama(path, body=None, timeout=10):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(OLLAMA_URL + path, data=data, headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _ollama_json(path, body=None, timeout=10):
+    with _ollama(path, body, timeout) as r:
+        return json.loads(r.read())
+
+
+def _ollama_error(e):
+    """Ollama's own message from an HTTP error ({"error": "…"}), or a plain description."""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            return json.loads(e.read()).get("error") or str(e)
+        except Exception:
+            return str(e)
+    if isinstance(e, urllib.error.URLError):
+        return "Ollama isn't running. Open the Ollama app (or run `ollama serve`) and ask again."
+    return str(e)
+
+
+def ollama_models():
+    """Models downloaded into Ollama, with whether each can see images and how much context it takes."""
+    try:
+        tags = _ollama_json("/api/tags", timeout=3).get("models") or []
+    except Exception:
+        return []
+    out = []
+    for t in tags:
+        name = t.get("name") or t.get("model")
+        if not name:
+            continue
+        key = (name, t.get("digest"))
+        if key not in SHOW_CACHE:
+            try:
+                SHOW_CACHE[key] = _ollama_json("/api/show", {"model": name}, timeout=10)
+            except Exception:
+                SHOW_CACHE[key] = {}
+        info = SHOW_CACHE[key]
+        caps = info.get("capabilities") or []
+        if caps and "completion" not in caps:
+            continue  # embedding models can't chat
+        ctx = next((v for k, v in (info.get("model_info") or {}).items() if k.endswith(".context_length")), None)
+        size = (t.get("details") or {}).get("parameter_size") or ""
+        out.append({"id": name, "label": name, "context_window": ctx, "vision": "vision" in caps,
+                    "desc": " · ".join(x for x in (size, "sees slide images" if "vision" in caps else "text only") if x)})
+    return out
+
+
+def _fit_ctx(chars, model_ctx=None):
+    """Context size for a prompt this long: 8k, 16k or 32k tokens (bigger needs more memory, so no more than needed)."""
+    need, ctx = int(chars / CHARS_PER_TOKEN) + OLLAMA_ANSWER_ROOM, 8192
+    while ctx < need and ctx < OLLAMA_MAX_CTX:
+        ctx *= 2
+    return min(ctx, model_ctx or ctx)
+
+
+OLLAMA_DECK_CHARS = int((OLLAMA_MAX_CTX - OLLAMA_ANSWER_ROOM - 4000) * CHARS_PER_TOKEN)  # the rest is prompt + chat
+
+
+class Ollama:
+    name = "ollama"
+    label = "Ollama"
+
+    @staticmethod
+    def bin():
+        app = "/Applications/Ollama.app/Contents/Resources/ollama"
+        return config.which("ollama") or (app if os.path.exists(app) else None)
+
+    def status(self):
+        st = {"provider": self.name, "installed": bool(self.bin()), "logged_in": False,
+              "install": "brew install --cask ollama-app   (or download it from ollama.com)",
+              "login": f"ollama pull {OLLAMA_SUGGESTED}"}
+        try:
+            _ollama_json("/api/version", timeout=3)
+        except Exception:
+            st.update(not_ready="Not running", login_label="Start Ollama…")
+            return st
+        models = ollama_models()
+        st["installed"] = True
+        st["logged_in"] = bool(models)
+        if models:
+            st["detail"] = f"{len(models)} model{'s' if len(models) > 1 else ''} on this Mac"
+        else:
+            st.update(not_ready="No model downloaded", login_label="Download a model…")
+        return st
+
+    @staticmethod
+    def pick_model(models=None):
+        """The model in Settings, or else the first one that can see images, or else the first one."""
+        chosen = config.load()["ollama_model"]
+        if chosen:
+            return chosen
+        models = ollama_models() if models is None else models
+        return next((m["id"] for m in models if m["vision"]), models[0]["id"] if models else None)
+
+    def session(self, pdf, model):
+        return OllamaSession(self, pdf, model)
+
+    def oneshot(self, prompt, model=None, timeout=600, fmt=None):
+        model = model or self.pick_model()
+        if not model:
+            raise RuntimeError(f"No Ollama model downloaded yet. In Terminal: ollama pull {OLLAMA_SUGGESTED}")
+        text = NO_TOOLS + "\n\n" + prompt
+        body = {"model": model, "messages": [{"role": "user", "content": text}], "stream": False,
+                "options": {"num_ctx": _fit_ctx(len(text))}, "keep_alive": "20m"}
+        if fmt:
+            body["format"] = fmt
+        try:
+            r = _ollama_json("/api/chat", body, timeout)
+        except Exception as e:
+            raise RuntimeError(_ollama_error(e))
+        return (r.get("message") or {}).get("content", "")
+
+    def oneshot_json(self, prompt, model=None, timeout=600):
+        return _json_from(self.oneshot(prompt, model, timeout, fmt="json"))
+
+    def with_pdf(self, pdf, prompt, model=None, timeout=1800):
+        deck = deck_text(pdf, max(20_000, OLLAMA_DECK_CHARS - len(prompt)))
+        return self.oneshot(f"FULL DECK TEXT (slide by slide):\n\n{deck}\n\n---\n\n{prompt}", model, timeout)
+
+
+class OllamaSession(TurnSession):
+    """Ollama keeps no conversation, so SlideMate does: the whole chat is sent each time (Ollama reuses its cache for
+    the unchanged start, so only the new question is read). The slide image goes in with the question if the model
+    can see images. Connected tools (MCP) aren't available to local models."""
+
+    def __init__(self, provider, pdf, model, effort=""):
+        super().__init__(provider, pdf, model, effort)
+        self.messages = []  # earlier turns, exactly as sent, so Ollama's cache still matches
+        self.ctx = None
+        self.resp = None
+
+    def cancel(self):
+        self.cancelled = True
+        r = self.resp
+        if r is not None:
+            try:
+                r.close()
+            except Exception:
+                pass
+
+    def _ask(self, question, page, total, image_b64, context):
+        models = ollama_models()
+        model = self.model or self.p.pick_model(models)
+        if not model:
+            yield (f"**No local model yet.** In Terminal, run `ollama pull {OLLAMA_SUGGESTED}` "
+                   "(about 6 GB), then ask again.")
+            return
+        info = next((m for m in models if m["id"] == model), {})
+        parts = []
+        if not self.messages:
+            deck = deck_text(self.pdf, OLLAMA_DECK_CHARS)
+            parts.append(f'FULL DECK TEXT of "{os.path.basename(self.pdf)}" ({total} slides):\n\n{deck}')
+            if context:
+                parts.append(context[-int(4000 * CHARS_PER_TOKEN):])  # lecture notes / earlier chat, kept short
+            self.ctx = _fit_ctx(len(TUTOR_PROMPT) + sum(map(len, parts)) + len(question), info.get("context_window"))
+        see = bool(image_b64 and info.get("vision"))
+        if see:
+            parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
+        parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
+        user = {"role": "user", "content": "\n\n".join(parts), **({"images": [image_b64]} if see else {})}
+        # Keep the deck (first exchange) and drop the oldest follow-ups once the chat outgrows the context.
+        def size(msgs):
+            return sum(len(m["content"]) + (1500 * CHARS_PER_TOKEN if m.get("images") else 0) for m in msgs) / CHARS_PER_TOKEN
+        while len(self.messages) > 2 and size(self.messages + [user]) + 1500 > self.ctx - OLLAMA_ANSWER_ROOM:
+            del self.messages[2:4]
+        body = {"model": model, "stream": True, "keep_alive": "20m", "options": {"num_ctx": self.ctx},
+                "messages": [{"role": "system", "content": TUTOR_PROMPT}] + self.messages + [user]}
+        yield ("status", "Reading the deck…" if not self.messages else "Thinking…")
+        out, stats, thinking = [], {}, False
+        try:
+            self.resp = _ollama("/api/chat", body, timeout=600)
+            for line in self.resp:
+                if self.cancelled:
+                    return
+                ev = json.loads(line)
+                if ev.get("error"):
+                    yield f"\n\n**Ollama error:** {ev['error']}"
+                    return
+                msg = ev.get("message") or {}
+                if msg.get("thinking") and not thinking:
+                    thinking = True
+                    yield ("status", "Thinking it through…")
+                if msg.get("content"):
+                    out.append(msg["content"])
+                    yield msg["content"]
+                if ev.get("done"):
+                    stats = ev
+        except Exception as e:
+            if not self.cancelled:
+                yield f"\n\n**Ollama error:** {_ollama_error(e)}"
+            return
+        finally:
+            r, self.resp = self.resp, None
+            if r is not None:
+                r.close()
+        if out:
+            self.messages += [user, {"role": "assistant", "content": "".join(out)}]
+        if stats:
+            yield ("usage", {"context_used": (stats.get("prompt_eval_count") or 0) + (stats.get("eval_count") or 0),
+                             "context_window": self.ctx, "model": model, "limits": [], "at": time.time()})
+
+
+PROVIDERS = {"claude": Claude(), "codex": Codex(), "cursor": Cursor(), "grok": Grok(), "antigravity": Antigravity(),
+             "ollama": Ollama()}
 
 
 def current():
@@ -988,7 +1401,11 @@ def open_login_terminal(name):
     b = p and p.bin()
     if not b:
         return False
-    cmd = f"'{b}' auth login" if name == "claude" else f"'{b}' login"
+    # Antigravity has no login command: starting it signs you in. Run it in SlideMate's scratch folder.
+    # Ollama: start it if it isn't running, then download the suggested model.
+    cmd = {"claude": f"'{b}' auth login", "antigravity": f"cd '{config.WORK}' && '{b}'",
+           "ollama": f"'{b}' list >/dev/null 2>&1 || open -a Ollama 2>/dev/null || (nohup '{b}' serve >/dev/null 2>&1 &); "
+                     f"sleep 3; '{b}' pull {OLLAMA_SUGGESTED}"}.get(name, f"'{b}' login")
     script = f'tell application "Terminal"\nactivate\ndo script "{cmd}"\nend tell'
     subprocess.Popen(["osascript", "-e", script])
     return True

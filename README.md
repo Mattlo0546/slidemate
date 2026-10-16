@@ -14,7 +14,8 @@ Explain any slide in context · Snip it to your iPad in one click · Turn the le
 
 </div>
 
-**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account.
+**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account, or for free with a
+Google account or a model running on your Mac.
 
 Lecture PDFs are terse: a few bullets, a diagram, an equation. Pasting slides into a chatbot one at a time
 loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor that has read every slide and
@@ -23,7 +24,8 @@ the course.
 
 It runs locally on your Mac and uses the AI you already pay for: **Claude** (via Claude Code), **ChatGPT**
 (via Codex), **Cursor** (via the Cursor CLI, with any model your Cursor plan offers) or **Grok** (via the Grok CLI).
-No API keys, no account, no server.
+No subscription? Use **Antigravity** (Google's CLI, free with a Google account) or a model that runs on your Mac with
+**Ollama** ([free options](#using-it-for-free)). No API keys, no account, no server.
 
 ## What it does
 
@@ -96,7 +98,7 @@ a single file. PDFs dropped onto the window get filed into the right course.
 | Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
 | Chats saved per slide | Yes | One long chat | One notebook chat |
 | Where it runs | On your Mac (open source) | Web | Web |
-| Cost | Free; uses your existing Claude or ChatGPT plan | Your plan | Varies |
+| Cost | Free; uses your existing AI plan, a free Google account, or a model on your Mac | Your plan | Varies |
 
 ## Quick start
 
@@ -110,8 +112,8 @@ a single file. PDFs dropped onto the window get filed into the right course.
 git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
 ```
 
-Either way you need one of **Claude Code**, **Codex**, **Cursor CLI** or **Grok CLI** signed in. The setup screen
-checks this and has a Sign in button.
+Either way you need one of **Claude Code**, **Codex**, **Cursor CLI**, **Grok CLI** or **Antigravity CLI** signed in,
+or **Ollama** with a model downloaded. The setup screen checks this and has a Sign in button.
 
 ---
 
@@ -127,15 +129,16 @@ The app isn't notarised by Apple yet, so the first time you open it macOS will b
 - **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
 
 You'll also need:
-- **Claude Code, Codex, Cursor CLI or Grok CLI, signed in.** These are the AI that does the tutoring (see the table
-  below).
+- **Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI, signed in, or Ollama.** These are the AI that does
+  the tutoring (see the table below).
 - **Apple's Command Line Tools** for Python: `xcode-select --install`. Most developers already have them.
-- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (ChatGPT, Cursor and
-  Grok read it) and lecture recording. The setup screen tells you if anything is missing.
+- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (every provider except Claude
+  reads it) and lecture recording. The setup screen tells you if anything is missing.
 
 ## Install from source
 
-Requirements: macOS 13+, [Homebrew](https://brew.sh), and one of Claude Code, Codex, Cursor CLI or Grok CLI signed in.
+Requirements: macOS 13+, [Homebrew](https://brew.sh), and one of Claude Code, Codex, Cursor CLI, Grok CLI or
+Antigravity CLI signed in (or Ollama with a model).
 
 ```bash
 git clone https://github.com/Mattlo0546/slidemate.git
@@ -145,7 +148,7 @@ scripts/install.sh
 
 The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app`,
 copies it to Applications and opens it. A setup screen asks for your slides folder (or creates one for you) and your
-AI provider. It shows whether Claude, ChatGPT, Cursor and Grok are installed and signed in, and has a **Sign in** button.
+AI provider. It shows whether each provider is installed and signed in, and has a **Sign in** button.
 
 Because the app is built on your Mac, it opens normally. If you instead download a prebuilt copy, macOS will ask you
 to right-click → Open the first time, since it isn't notarised.
@@ -158,8 +161,20 @@ to right-click → Open the first time, since it isn't notarised.
 | ChatGPT | `brew install codex` | `codex login` (ChatGPT account) |
 | Cursor | `curl https://cursor.com/install -fsS \| bash` | `cursor-agent login` (Cursor account) |
 | Grok | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` (grok.com / SuperGrok account) |
+| Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | run `agy` once and sign in with Google |
+| On your Mac | `brew install --cask ollama-app` | no sign-in: `ollama pull qwen3-vl:8b` downloads a model |
 
 SlideMate runs these CLIs on your behalf with your own subscription. Check each provider's terms for your plan.
+
+### Using it for free
+
+Claude Code needs a paid Claude plan, but you don't need one to use SlideMate:
+
+| Option | What you need | Good to know |
+| --- | --- | --- |
+| **Antigravity** (Google) | A Google account | The free plan has a weekly limit (Google doesn't publish the number). Gemini Flash, plus Claude and GPT-OSS models where your plan includes them. Fast, and reads the slide image. |
+| **ChatGPT Free** | A free ChatGPT account, with Codex | OpenAI includes Codex on the Free plan, with tight limits. |
+| **On your Mac** (Ollama) | 16 GB of memory or more, and about 6 GB of disk for `qwen3-vl:8b` | Free, offline and private. The first question on a deck takes a minute or so while it reads the slides, and answers are simpler than the big models'. No MCP tools. |
 
 ## How your files are organised
 
@@ -185,14 +200,19 @@ System Settings → Privacy & Security → Accessibility. Without it, you click 
 ## MCP connections
 
 
-Settings → **Connections (MCP)** → *Import from other AI apps…* (Claude, Codex, Cursor and Grok), or *Add server…* with a command and arguments
+Settings → **Connections (MCP)** → *Import from other AI apps…* (Claude, Codex, Cursor, Grok and Antigravity), or *Add server…* with a command and arguments
 (the same format as Claude Desktop's `mcpServers`).
 
 - **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
   blackboard › bb_upcoming…" while it works. With Claude, servers are passed via `--mcp-config` with their tools
   allowed. With Codex, they're passed as `-c mcp_servers.*` overrides with `default_tools_approval_mode="approve"`.
   With Cursor and Grok, SlideMate writes them into the session's own scratch folder (`.cursor/mcp.json` with an
-  allow rule for their tools, or `.grok/config.toml`); shell commands and file edits stay off.
+  allow rule for their tools, or `.grok/config.toml`); shell commands and file edits stay off. With Antigravity, they go
+  in the session folder's `.agents/mcp_config.json`. Antigravity only reads permission rules from its global
+  `~/.gemini/antigravity-cli/settings.json`, so SlideMate adds an `mcp(<server>/*)` allow rule there for each tutor
+  server and removes it again when you remove the server (rules you added yourself are left alone). Shell commands
+  and web pages stay off, since headless Antigravity refuses anything that would need a permission prompt. Local
+  models (Ollama) don't use MCP tools.
 - **Pull**: if a server you add has a sync-style tool (e.g. `bb_sync`), SlideMate wires it to a **Pull from
   <Server>** button in the library automatically, with its sign-in tool (e.g. `bb_login`) used when the session
   has expired. Long syncs that run in the background are followed to the end by polling the matching
@@ -224,7 +244,8 @@ writes a summary plus notes for each slide with the lecturer's exact words. You 
 transcript.
 
 **Is it free? Is there a NotebookLM alternative for lecture slides?**
-SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Unlike
+SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Without a
+plan, it works with a free Google account (Antigravity) or a model on your Mac (Ollama). Unlike
 general "chat with your sources" tools, it's a slide viewer first: the tutor answers about the slide in front of you,
 with the whole deck as context.
 

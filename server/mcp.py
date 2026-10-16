@@ -2,7 +2,7 @@
 
 Servers you add in Settings are used in two ways:
   1. The tutor can call their tools while answering (Claude Code via --mcp-config, Codex via -c mcp_servers.*,
-     Cursor and Grok via config files in the session's own working folder).
+     Cursor, Grok and Antigravity via config files in the session's own working folder).
   2. SlideMate itself can call a tool directly, e.g. a Blackboard/Canvas "sync" tool behind the Sync button.
 
 Config shape (config.json → "mcp_servers"):
@@ -123,6 +123,53 @@ def grok_files(folder):
     (d / "config.toml").write_text("\n".join(lines))
     os.chmod(d / "config.toml", 0o600)
     return bool(lines)
+
+
+AGY_SETTINGS = config.HOME / ".gemini" / "antigravity-cli" / "settings.json"
+AGY_OURS = config.DATA / "antigravity-allowed.json"  # the allow rules SlideMate added, so it can take them back
+
+
+def antigravity_files(folder, with_servers=True):
+    """Write .agents/mcp_config.json into an Antigravity session's folder with the tutor's MCP servers.
+    Antigravity only reads permission rules from its global settings, and in headless mode it refuses any MCP
+    tool that isn't allowed there, so the rules for these servers are kept in step too."""
+    srv = servers(tutor_only=True) if with_servers else {}
+    cfg = {}
+    for name, s in srv.items():
+        if s.get("url"):
+            cfg[name] = {"serverUrl": s["url"], **({"headers": s["headers"]} if s.get("headers") else {})}
+        else:
+            cfg[name] = {"command": s["command"], "args": s.get("args", []), "env": s.get("env", {})}
+    d = Path(folder) / ".agents"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "mcp_config.json").write_text(json.dumps({"mcpServers": cfg}))
+    os.chmod(d / "mcp_config.json", 0o600)  # may hold MCP server credentials
+    if with_servers:
+        _agy_allow(srv)
+    return bool(srv)
+
+
+def _agy_allow(srv):
+    """Add `mcp(<server>/*)` to Antigravity's global allow list for each tutor server, and remove the ones
+    SlideMate added earlier for servers that are gone. Rules you added yourself are never touched."""
+    try:
+        data = json.loads(AGY_SETTINGS.read_text()) if AGY_SETTINGS.exists() else {}
+        ours = set(json.loads(AGY_OURS.read_text())) if AGY_OURS.exists() else set()
+    except (OSError, ValueError):
+        return  # unreadable settings: leave them alone (MCP tools will be refused)
+    if not isinstance(data, dict):
+        return
+    perms = data.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    want = {f"mcp({n}/*)" for n in srv}
+    keep = [r for r in allow if r in want or r not in ours]
+    added = [r for r in sorted(want) if r not in keep]
+    ours = (ours & want) | set(added)
+    if keep + added != allow:
+        perms["allow"] = keep + added
+        AGY_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+        AGY_SETTINGS.write_text(json.dumps(data, indent=2) + "\n")
+    AGY_OURS.write_text(json.dumps(sorted(ours)))
 
 
 # ------------------------------------------------------------------ a tiny stdio MCP client
@@ -380,8 +427,19 @@ def _from_codex_toml(path):
     return {n: s for n, s in out.items() if s.get("enabled", True) is not False}
 
 
+def _from_antigravity():
+    """Antigravity CLI's own servers, then the ones it shares with the Antigravity app (remote ones use serverUrl)."""
+    out = {}
+    for path in ("~/.gemini/antigravity-cli/mcp_config.json", "~/.gemini/config/mcp_config.json"):
+        for name, s in _from_json(path).items():
+            if isinstance(s, dict) and s.get("serverUrl") and not s.get("url"):
+                s = {**s, "url": s["serverUrl"]}
+            out.setdefault(name, s)
+    return out
+
+
 def discover():
-    """MCP servers already configured in Claude Desktop, Claude Code, Codex, Cursor and Grok."""
+    """MCP servers already configured in Claude Desktop, Claude Code, Codex, Cursor, Grok and Antigravity."""
     found = {}
     sources = [
         ("Claude Desktop", _from_json("~/Library/Application Support/Claude/claude_desktop_config.json")),
@@ -389,6 +447,7 @@ def discover():
         ("Codex", _from_codex_toml("~/.codex/config.toml")),
         ("Cursor", _from_json("~/.cursor/mcp.json")),
         ("Grok", _from_codex_toml("~/.grok/config.toml")),  # same [mcp_servers.<name>] tables as Codex
+        ("Antigravity", _from_antigravity()),
     ]
     for source, srvs in sources:
         for name, s in srvs.items():
