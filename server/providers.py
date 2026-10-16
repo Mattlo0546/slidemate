@@ -558,7 +558,8 @@ class TurnSession:
         """Saves the student's pictures for a CLI that opens files itself, and says where they are."""
         names = [f"`{p.name}`" for p in self._save_pictures(attachments)]
         return (f"{_pictures_intro(len(names))}: saved as {', '.join(names)} in your workspace. Open "
-                f"{'them' if len(names) > 1 else 'it'} with your {opener} before answering.") if names else ""
+                f"{'them' if len(names) > 1 else 'it'} with your {opener} before answering. Don't mention or link the "
+                f"file{'s' if len(names) > 1 else ''} themselves.") if names else ""
 
     def _save_pictures(self, attachments):
         """The student's own pictures, saved in the session folder (for CLIs that attach or open files)."""
@@ -1479,7 +1480,7 @@ def setup_script(name, install):
     elif name == "antigravity":
         # Antigravity has no login command: starting it signs you in. Run it in SlideMate's scratch folder.
         steps += ['echo; echo "Signing in. Antigravity starts and opens your browser: sign in with your Google account."',
-                  'echo "Once it says you are signed in, press Ctrl-C twice to quit it."; echo',
+                  'echo "Once you are signed in, SlideMate notices and you can close this window."; echo',
                   f"cd '{config.WORK}' && agy"]
     elif name == "ollama":
         steps += ['echo; echo "Starting Ollama and downloading a model that can read slides (about 6 GB)…"',
