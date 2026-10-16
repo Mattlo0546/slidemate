@@ -18,6 +18,7 @@ import providers
 HOME = Path.home()
 LECTURES = config.LECTURES
 ENV = config.ENV
+ON_NOTES_DONE = []  # callbacks(meta) once a lecture's notes are written (flashcards hook in here)
 
 
 def FFMPEG():
@@ -243,11 +244,21 @@ def _secs(ts):
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
 
 
-def import_transcript(path, text, on_date=None, model="opus"):
+def import_transcript(path, text, on_date=None, model="opus", sentences=None, source="imported", fill_from=None,
+                      extra=None):
+    """Turn a transcript into a lecture. `sentences` ([{start, end, text}], e.g. from Re/Play captions) is used as-is
+    instead of parsing `text`. With `fill_from` (an earlier lecture of the same deck that only covered part of it),
+    that lecture's slide notes are kept and the new transcript only fills the slides it had no notes for."""
+    extra = extra or {}
+    if extra.get("replay_id"):  # the same recording sent twice: reuse the lecture made the first time
+        for m in list_for_deck(path):
+            if m.get("replay_id") == extra["replay_id"] and m.get("status") != "error":
+                return m["id"]
     lid = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     ldir(lid).mkdir(parents=True)
-    sents = []
-    for line in text.splitlines():
+    sents = [{"start": s.get("start"), "end": s.get("end"), "text": s["text"].strip()}
+             for s in sentences or [] if (s.get("text") or "").strip()]
+    for line in ([] if sentences else text.splitlines()):
         line = line.strip()
         if not line or HEADER.match(line):
             continue
@@ -260,8 +271,10 @@ def import_transcript(path, text, on_date=None, model="opus"):
             if sent.strip():
                 sents.append({"start": start, "end": None, "text": sent.strip()})
                 start = None
+    timed = [s["end"] or s["start"] for s in sents if (s["end"] or s["start"]) is not None]
     save_meta(lid, id=lid, **deck_info(path), date=on_date or date.today().isoformat(), started=time.time(),
-              status="writing", source="imported")
+              status="writing", source=source, fill_from=fill_from, duration=max(timed) if timed else None,
+              **{k: v for k, v in extra.items() if k in ("replay_id", "replay_title", "replay_url")})
     lib._save(ldir(lid) / "transcript.json", sents)
     lib._save(ldir(lid) / "events.json", [])
     threading.Thread(target=lambda: _safe_notes(lid, model), daemon=True).start()
@@ -394,9 +407,33 @@ def generate_notes(lid, model="opus"):
     summary, slides = _parse(text, sents)
     if not summary and not slides:
         raise RuntimeError("Couldn't parse Claude's notes.")
+    filled = None
+    if m.get("fill_from"):
+        slides, filled = _fill_gaps(m["fill_from"], slides)
     lib._save(ldir(lid) / "notes.json", {"summary_md": summary, "slides": {str(k): v for k, v in slides.items()}, "raw": text})
+    if filled is not None:
+        save_meta(lid, filled_slides=filled)
     files = _write_markdown(lid, summary, slides, sents)
-    save_meta(lid, status="done", files=files, finished=time.time())
+    m = save_meta(lid, status="done", files=files, finished=time.time())
+    for cb in ON_NOTES_DONE:
+        try:
+            cb(m)
+        except Exception as e:
+            print("notes-done hook failed", e, flush=True)
+
+
+def _fill_gaps(old_lid, slides):
+    """Keep the slide notes an earlier (partial) lecture already has; take the new notes only for the other slides.
+    Kept quotes are tagged with their lecture, since their times and line numbers belong to that recording."""
+    try:
+        old = lib._load(ldir(old_lid) / "notes.json", None) or {}
+    except ValueError:
+        old = {}
+    merged = {n: s for n, s in slides.items()}
+    for k, s in (old.get("slides") or {}).items():
+        merged[int(k)] = {**s, "quotes": [{**q, "lecture": q.get("lecture") or old_lid} for q in s.get("quotes", [])]}
+    filled = sorted(n for n in slides if str(n) not in (old.get("slides") or {}))
+    return dict(sorted(merged.items())), filled
 
 
 def _write_markdown(lid, summary, slides, sents):

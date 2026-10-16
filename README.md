@@ -38,7 +38,7 @@ your lecturer actually said. Slide references like "slide 4" are links: hover to
 <td width="50%" valign="top">
 
 ### 📲 Snip → iPad in one click
-Drag over any part of a slide and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
+Drag over any part of a slide, or over the chat to grab the tutor's notes, and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
 copied to your clipboard, ready for GoodNotes or Notability.
 
 </td>
@@ -76,6 +76,17 @@ a single file. PDFs dropped onto the window get filed into the right course.
 </tr>
 </table>
 
+### 🃏 Flashcards that know what was hard
+After each lecture, SlideMate writes active-recall flashcards for it, split by subtopic. They come from the slides and
+from **what the lecturer said**, so anything flagged as examinable is marked ⭐. They also come from **the questions you
+asked the tutor**: what you struggled with gets its own card. When you've been revising a deck in the chat, new cards
+are added for the bits you asked about.
+
+Review with spaced repetition. **FSRS**, the scheduler Anki uses, brings each card back just before you'd forget it.
+"Study everything due" mixes your courses, and the back of each card shows the slide it came from. Cards adapt to the
+subject: arguments and objections for philosophy, mechanisms and trade-offs for engineering, formulas, derivation
+steps and short problems for maths. Press <kbd>R</kbd> to review, and export any deck to Anki.
+
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
@@ -83,8 +94,10 @@ a single file. PDFs dropped onto the window get filed into the right course.
   [Google Classroom](https://github.com/Mattlo0546/classroom-mcp) MCP server, and the tutor can check deadlines and
   announcements mid-answer. A **Pull** button syncs new slides automatically.
 - **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
+- **Updates itself**: when a new release is out, SlideMate offers to install it and relaunch (or SlideMate → Check for
+  Updates…).
 - **Private by design**: everything stays on your Mac. The only thing sent anywhere is your question to the AI provider you
-  chose.
+  chose (plus a daily check of GitHub for a new release, which sends nothing about you).
 
 > The demo above uses an original sample lecture made for SlideMate. Answers are real, generated live by Claude.
 
@@ -97,6 +110,7 @@ a single file. PDFs dropped onto the window get filed into the right course.
 | Uses what the lecturer said | Yes, from your recording | No | If you upload a transcript |
 | Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
 | Chats saved per slide | Yes | One long chat | One notebook chat |
+| Flashcards from the lecture + your questions | Yes, spaced repetition (FSRS) | No | Generic flashcards |
 | Where it runs | On your Mac (open source) | Web | Web |
 | Cost | Free; uses your existing AI plan, a free Google account, or a model on your Mac | Your plan | Varies |
 
@@ -112,8 +126,9 @@ a single file. PDFs dropped onto the window get filed into the right course.
 git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
 ```
 
-Either way you need one of **Claude Code**, **Codex**, **Cursor CLI**, **Grok CLI** or **Antigravity CLI** signed in,
-or **Ollama** with a model downloaded. The setup screen checks this and has a Sign in button.
+Either way you need one AI to tutor you: a Claude, ChatGPT, Cursor or Grok plan, a Google account (Gemini through
+Antigravity, free plan included), or a free model on your Mac with Ollama. The setup screen installs whichever you pick
+and signs you in with one click (and SlideMate installs Apple's Command Line Tools itself if they're missing).
 
 ---
 
@@ -128,10 +143,13 @@ The app isn't notarised by Apple yet, so the first time you open it macOS will b
 - **macOS 13–14:** right-click SlideMate → **Open** → **Open**.
 - **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
 
+You only do this once. From 0.3.0 on, SlideMate checks GitHub once a day and offers **Install and Relaunch** when a new
+version is out, so later updates open without the prompt. Choose SlideMate → **Check for Updates…** to check now.
+
 You'll also need:
-- **Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI, signed in, or Ollama.** These are the AI that does
-  the tutoring (see the table below).
-- **Apple's Command Line Tools** for Python: `xcode-select --install`. Most developers already have them.
+- **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
+  setup screen installs and signs in to any of them with one click (see the table below).
+- **Apple's Command Line Tools** for Python. If they're missing, SlideMate opens Apple's installer for you on first launch.
 - **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (every provider except Claude
   reads it) and lecture recording. The setup screen tells you if anything is missing.
 
@@ -184,12 +202,13 @@ Uni/                      ← the folder you choose in setup
 │   ├── Week 01/...pdf
 │   └── Lectures (SlideMate)/   ← lecture summaries, slide notes, transcripts (Markdown)
 ├── Philosophy of AI/
-│   └── SlideMate Chats/        ← your tutor chats (Markdown)
+│   ├── SlideMate Chats/        ← your tutor chats (Markdown)
+│   └── SlideMate Flashcards/   ← each lecture's flashcards (Markdown, plus Anki exports)
 └── _Inbox/               ← drop PDFs here and they get filed into the right course
 ```
 
 SlideMate's own data lives in `~/Library/Application Support/SlideMate`: settings, chats, lecture recordings and
-notes. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
+notes, flashcards and your review history. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
 
 ## Send to iPad auto-select
 
@@ -241,7 +260,8 @@ for you) and is copied to the clipboard for pasting via Universal Clipboard.
 **Can it turn a lecture recording into notes?**
 Yes. Press **Record** in class. It transcribes on-device (NVIDIA Parakeet), tracks which slide was showing, and
 writes a summary plus notes for each slide with the lecturer's exact words. You can also import an Otter or Granola
-transcript.
+transcript, or have a tool send one in (e.g. lecture-capture captions) through `POST /api/lecture/import` with
+timed `sentences`. With `fill_from`, an earlier lecture's slide notes are kept and only the slides it missed are filled.
 
 **Is it free? Is there a NotebookLM alternative for lecture slides?**
 SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Without a
@@ -263,8 +283,9 @@ PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) th
 | AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
 | MCP connections + client | `server/mcp.py` |
 | Lecture recording → notes | `server/lecture.py` |
+| Flashcards + FSRS scheduling | `server/flashcards.py` |
 | UI | `server/static/` |
-| Native app + AirDrop helper | `macos/` |
+| Native app (window, updater) + AirDrop helper | `macos/` |
 
 The server only listens on localhost and requires a custom header on every API call, so web pages can't reach it.
 

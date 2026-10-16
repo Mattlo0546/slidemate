@@ -116,13 +116,18 @@ DispatchQueue.main.async {
 
 var ticks = 0
 var sawWindow = false
+var searchTicks = 0
 Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
     ticks += 1
     let visible = app.windows.contains { $0.isVisible }
     if visible { sawWindow = true }
     if sawWindow && !visible { exit(0) }            // panel closed (sent or cancelled)
     if ticks > 240 { report(["state": "timeout"]); exit(4) }  // 60s
-    guard let dev = device.map(norm), !dev.isEmpty, trusted, sawWindow, ticks % 2 == 0 else { return }
+    guard let dev = device.map(norm), !dev.isEmpty, trusted, sawWindow else { return }
+    // The device is off, asleep or out of range: close the empty panel instead of leaving it up.
+    searchTicks += 1
+    if searchTicks > 32 { report(["state": "notfound", "device": device!]); exit(5) }  // 8s
+    guard ticks % 2 == 0 else { return }
     // Also accept the name without a "(2)"-style suffix, which macOS adds when two devices share a name.
     let base = dev.replacingOccurrences(of: #"\s*\(\d+\)$"#, with: "", options: .regularExpression)
     let wanted = base == dev ? [dev] : [dev, base]

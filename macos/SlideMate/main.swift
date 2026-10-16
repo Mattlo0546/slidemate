@@ -3,13 +3,14 @@
 // On launch it starts `server/server.py` (bundled in Contents/Resources) with the system Python 3,
 // waits for it to answer, then shows the UI in a WKWebView. Quitting the app stops the server.
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 
 let port = ProcessInfo.processInfo.environment["SLIDEMATE_PORT"] ?? "8767"
 let base = URL(string: "http://127.0.0.1:\(port)/")!
 let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/SlideMate")
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSAlertDelegate {
     var window: NSWindow!
     var web: WKWebView!
     var server: Process?
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             if ok {
                 self.ready = true
                 self.load(file: self.pendingFile)
+                self.scheduleUpdateChecks()
             } else {
                 self.showMessage("SlideMate couldn't start its local server.", detail: detail)
             }
@@ -132,8 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             || FileManager.default.fileExists(atPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/python3")
         let pythons = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] + (cltInstalled ? ["/usr/bin/python3"] : [])
         guard let python = pythons.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            return done(false, "SlideMate needs Python 3, which comes with Apple's free Command Line Tools.\n\n"
-                        + "Open Terminal, run:   xcode-select --install\nthen reopen SlideMate.")
+            return installCommandLineTools { [weak self] in self?.spawnServer(done) }
         }
         try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
         let logURL = logDir.appendingPathComponent("server.log")
@@ -172,11 +173,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         poll()
     }
 
-    func showMessage(_ title: String, detail: String = "") {
+    /// SlideMate runs on the Python that comes with Apple's free Command Line Tools. `xcode-select --install`
+    /// shows Apple's own installer dialog; once it has finished, carry on starting up.
+    func installCommandLineTools(then next: @escaping () -> Void) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+        p.arguments = ["--install"]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        showMessage("One more thing: Apple's Command Line Tools",
+                    note: "SlideMate runs on Python, which comes with Apple's free Command Line Tools. Click <b>Install</b> in the "
+                        + "window that just opened and agree to the licence. It takes 5–10 minutes, and SlideMate starts by itself "
+                        + "when it's done.<br><br>Don't see the window? Quit and reopen SlideMate.")
+        func wait() {
+            let ready = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+                         "/opt/homebrew/bin/python3", "/usr/local/bin/python3"].contains { FileManager.default.isExecutableFile(atPath: $0) }
+            if ready { return next() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wait)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wait)
+    }
+
+    func showMessage(_ title: String, detail: String = "", note: String = "") {
         let esc = { (s: String) in s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;") }
+        let noteHTML = note.isEmpty ? "" : "<p style='line-height:1.5'>\(note)</p>"
         let html = """
         <html><body style="font:14px -apple-system;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;
-        color:#888;background:transparent"><div style="max-width:640px;text-align:center"><p style="font-size:15px;color:#999">\(esc(title))</p>
+        color:#888;background:transparent"><div style="max-width:640px;text-align:center"><p style="font-size:15px;color:#999">\(esc(title))</p>\(noteHTML)
         <pre style="text-align:left;white-space:pre-wrap;font:11px Menlo;color:#888">\(esc(detail))</pre></div></body></html>
         """
         web.loadHTMLString(html, baseURL: nil)
@@ -202,6 +226,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         decisionHandler(.allow)
     }
 
+    // <input type="file"> does nothing in WKWebView unless the app shows the panel. The only one is
+    // "attach pictures" in the chat, so the panel offers images.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.message = "Choose pictures to ask about, e.g. photos of your handwritten notes"
+        guard let w = webView.window else { return completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
+        panel.beginSheetModal(for: w) { r in completionHandler(r == .OK ? panel.urls : nil) }
+    }
+
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let a = NSAlert(); a.messageText = message; a.runModal(); completionHandler()
@@ -224,9 +261,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         completionHandler(a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
     }
 
-    // Native folder picker for the setup screen: window.webkit.messageHandlers.slidemate.postMessage({action: "pickFolder"})
+    // Native helpers for the web UI: window.webkit.messageHandlers.slidemate.postMessage({action: …})
+    //   "pickFolder": folder picker for the setup screen
+    //   "snapshot":   screenshot of part of the window (snipping the chat), {x, y, w, h} in page pixels
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], body["action"] as? String == "pickFolder" else { return }
+        guard let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
+        if action == "snapshot" { return snapshot(body) }
+        guard action == "pickFolder" else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -240,6 +281,201 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             let json = (try? JSONSerialization.data(withJSONObject: [value])).flatMap { String(data: $0, encoding: .utf8) } ?? "[null]"
             self?.web.evaluateJavaScript("window.__slidemateFolder && window.__slidemateFolder(\(json)[0])")
         }
+    }
+
+    func snapshot(_ body: [String: Any]) {
+        let num = { (k: String) in CGFloat((body[k] as? NSNumber)?.doubleValue ?? 0) }
+        let cfg = WKSnapshotConfiguration()
+        cfg.rect = CGRect(x: num("x"), y: num("y"), width: num("w"), height: num("h"))
+        cfg.afterScreenUpdates = true
+        web.takeSnapshot(with: cfg) { [weak self] image, _ in
+            var url = "null"
+            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+               let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                url = "\"data:image/png;base64,\(png.base64EncodedString())\""
+            }
+            self?.web.evaluateJavaScript("window.__slidemateSnapshot && window.__slidemateSnapshot(\(url))")
+        }
+    }
+
+    // MARK: updates
+    //
+    // Checks the latest GitHub release once a day. If it's newer, offers to download it, swap it in for this
+    // copy of SlideMate and relaunch. The app is ad-hoc signed, but a file downloaded with URLSession isn't
+    // quarantined, so the new copy opens without the Gatekeeper prompt the first download needed.
+
+    let releasesAPI = URL(string: "https://api.github.com/repos/Mattlo0546/slidemate/releases/latest")!
+    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    var checkingForUpdates = false
+
+    struct Release { let version: String; let notes: String; let page: URL; let zip: URL? }
+
+    func scheduleUpdateChecks() {
+        guard ProcessInfo.processInfo.environment["SLIDEMATE_NO_UPDATE_CHECK"] == nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.checkForUpdates(userInitiated: false) }
+        // SlideMate often stays open for days, so check again every few hours (at most once a day).
+        Timer.scheduledTimer(withTimeInterval: 4 * 3600, repeats: true) { [weak self] _ in self?.checkForUpdates(userInitiated: false) }
+    }
+
+    @objc func checkForUpdatesMenu() { checkForUpdates(userInitiated: true) }
+
+    func checkForUpdates(userInitiated: Bool) {
+        let defaults = UserDefaults.standard
+        if !userInitiated, let last = defaults.object(forKey: "lastUpdateCheck") as? Date, Date().timeIntervalSince(last) < 20 * 3600 { return }
+        guard !checkingForUpdates else { return }
+        checkingForUpdates = true
+        var req = URLRequest(url: releasesAPI)
+        req.timeoutInterval = 15
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.checkingForUpdates = false
+                guard (resp as? HTTPURLResponse)?.statusCode == 200, let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tag = json["tag_name"] as? String,
+                      let page = (json["html_url"] as? String).flatMap(URL.init(string:)) else {
+                    if userInitiated { self.updateAlert("Couldn't check for updates", "GitHub didn't answer. Check your internet connection and try again.") }
+                    return
+                }
+                defaults.set(Date(), forKey: "lastUpdateCheck")
+                let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+                let zip = (json["assets"] as? [[String: Any]] ?? [])
+                    .first { ($0["name"] as? String)?.hasSuffix("-macOS.zip") == true }
+                    .flatMap { ($0["browser_download_url"] as? String).flatMap(URL.init(string:)) }
+                let release = Release(version: version, notes: Self.plainNotes(json["body"] as? String ?? ""), page: page, zip: zip)
+                if Self.isNewer(version, than: self.currentVersion) {
+                    if userInitiated || defaults.string(forKey: "skippedVersion") != version { self.offerUpdate(release, userInitiated: userInitiated) }
+                } else if userInitiated {
+                    self.updateAlert("You're up to date", "SlideMate \(self.currentVersion) is the latest version.")
+                }
+            }
+        }.resume()
+    }
+
+    static func isNewer(_ a: String, than b: String) -> Bool {
+        let parts = { (s: String) in s.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 } }
+        let x = parts(a), y = parts(b)
+        for i in 0..<max(x.count, y.count) {
+            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+            if p != q { return p > q }
+        }
+        return false
+    }
+
+    /// The release notes as plain text for an alert: no images/HTML, no install section, no markdown markers.
+    static func plainNotes(_ body: String) -> String {
+        var lines: [String] = []
+        for raw in body.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("### Install") || line.hasPrefix("**Full Changelog") { break }
+            if line.hasPrefix("<") || line.isEmpty && (lines.last?.isEmpty ?? true) { continue }
+            var clean = line.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            if clean.hasPrefix("### ") { clean = String(clean.dropFirst(4)) }
+            if clean.hasPrefix("- ") { clean = "• " + clean.dropFirst(2) }
+            else if !clean.isEmpty, let last = lines.last, !last.isEmpty, !raw.hasPrefix("#") {
+                lines[lines.count - 1] = last + " " + clean; continue  // a wrapped line continues the one above
+            }
+            lines.append(clean)
+        }
+        let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.count > 900 ? String(text.prefix(900)) + "…" : text
+    }
+
+    func updateAlert(_ title: String, _ text: String) {
+        let a = NSAlert(); a.messageText = title; a.informativeText = text
+        a.beginSheetModal(for: window)
+    }
+
+    func offerUpdate(_ r: Release, userInitiated: Bool) {
+        guard window.attachedSheet == nil else { return }  // don't stack on top of another dialog; ask next time
+        let a = NSAlert()
+        a.messageText = "SlideMate \(r.version) is available"
+        a.informativeText = "You have \(currentVersion).\n\n\(r.notes)"
+        a.addButton(withTitle: "Install and Relaunch")
+        a.addButton(withTitle: "Later")
+        a.addButton(withTitle: "Skip This Version")
+        a.showsHelp = true  // the (?) button opens the full release notes
+        a.delegate = self
+        releasePage = r.page
+        a.beginSheetModal(for: window) { [weak self] resp in
+            switch resp {
+            case .alertFirstButtonReturn: self?.installUpdate(r)
+            case .alertThirdButtonReturn: UserDefaults.standard.set(r.version, forKey: "skippedVersion")
+            default: break
+            }
+        }
+    }
+
+    var releasePage: URL?
+    func alertShowHelp(_ alert: NSAlert) -> Bool {
+        if let u = releasePage { NSWorkspace.shared.open(u) }
+        return true
+    }
+
+    func installUpdate(_ r: Release) {
+        let dest = Bundle.main.bundleURL
+        let parent = dest.deletingLastPathComponent()
+        // Not installed somewhere we can replace (e.g. run from the Downloads zip or a read-only disk image):
+        // just open the release page.
+        guard let zip = r.zip, dest.pathExtension == "app", FileManager.default.isWritableFile(atPath: parent.path),
+              !dest.path.hasPrefix("/private/var/folders") /* App Translocation */ else {
+            NSWorkspace.shared.open(r.page); return
+        }
+        web.evaluateJavaScript("window.__slidemateRecording ? window.__slidemateRecording() : {recording:false}") { [weak self] result, _ in
+            guard let self = self else { return }
+            if ((result as? [String: Any])?["recording"] as? Bool) == true {
+                return self.updateAlert("Finish recording first", "SlideMate can't update while a lecture is being recorded. Stop the recording, then choose SlideMate → Check for Updates….")
+            }
+            self.window.title = "SlideMate — downloading \(r.version)…"
+            URLSession.shared.downloadTask(with: zip) { file, resp, err in
+                let fail = { (why: String) in DispatchQueue.main.async {
+                    self.window.title = "SlideMate"
+                    let a = NSAlert(); a.messageText = "The update didn't install"
+                    a.informativeText = "\(why)\n\nYou can download it from GitHub instead."
+                    a.addButton(withTitle: "Open GitHub"); a.addButton(withTitle: "Cancel")
+                    a.beginSheetModal(for: self.window) { if $0 == .alertFirstButtonReturn { NSWorkspace.shared.open(r.page) } }
+                } }
+                guard let file = file, (resp as? HTTPURLResponse)?.statusCode == 200 else { return fail(err?.localizedDescription ?? "The download failed.") }
+                let fm = FileManager.default
+                let work = fm.temporaryDirectory.appendingPathComponent("SlideMate-update-\(r.version)-\(UUID().uuidString.prefix(6))")
+                try? fm.createDirectory(at: work, withIntermediateDirectories: true)
+                let unzip = Process()
+                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                unzip.arguments = ["-x", "-k", file.path, work.path]
+                do { try unzip.run(); unzip.waitUntilExit() } catch { return fail("Couldn't unzip the download.") }
+                let app = work.appendingPathComponent("SlideMate.app")
+                let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))
+                guard unzip.terminationStatus == 0, info?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier,
+                      info?["CFBundleShortVersionString"] as? String == r.version else {
+                    return fail("The downloaded file wasn't the SlideMate \(r.version) app.")
+                }
+                DispatchQueue.main.async { self.relaunch(replacing: dest, with: app) }
+            }.resume()
+        }
+    }
+
+    /// Quits, then a detached shell script waits for this app (and its server) to exit, swaps the new
+    /// bundle in (restoring the old one if that fails) and opens it.
+    func relaunch(replacing dest: URL, with app: URL) {
+        let q = { (s: String) in "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let pids = [ProcessInfo.processInfo.processIdentifier] + (server.map { [$0.processIdentifier] } ?? [])
+        let script = """
+        for p in \(pids.map(String.init).joined(separator: " ")); do while kill -0 $p 2>/dev/null; do sleep 0.2; done; done
+        D=\(q(dest.path)); N=\(q(app.path))
+        xattr -dr com.apple.quarantine "$N" 2>/dev/null
+        rm -rf "$D.old" && mv "$D" "$D.old" && if mv "$N" "$D"; then rm -rf "$D.old"; else mv "$D.old" "$D"; fi
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$D" 2>/dev/null
+        open "$D"
+        """
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", script]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { window.title = "SlideMate"; return updateAlert("The update didn't install", "\(error)") }
+        quitConfirmed = true  // we checked there's no recording
+        NSApp.terminate(nil)
     }
 
     // MARK: menus
@@ -261,6 +497,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         }
         let appMenu = NSMenu()
         appMenu.addItem(item("About SlideMate", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""))
+        appMenu.addItem(item("Check for Updates…", #selector(checkForUpdatesMenu), target: self))
         appMenu.addItem(.separator())
         appMenu.addItem(item("Settings…", #selector(openSettings), ",", target: self))
         appMenu.addItem(.separator())

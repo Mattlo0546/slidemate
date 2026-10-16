@@ -41,6 +41,9 @@ How to answer:
   lecturer is most likely saying.
 - Use short paragraphs, bullets and worked examples where useful. Use LaTeX with $...$ / $$...$$ for maths.
 - Be concise by default; go deeper when asked. Don't repeat the slide text back verbatim.
+- The student may attach their own pictures, often photos of handwritten lecture notes. Read them carefully
+  (handwriting, arrows, sketches, crossed-out bits), briefly say what you read wherever it's ambiguous, then explain
+  the ideas and tie them to the relevant slides. Gently point out anything in the notes that looks wrong.
 - You may have tools connected to the student's accounts (e.g. their university VLE). Use them when a question needs
   live information — deadlines, announcements, other course materials — and say briefly what you looked up.
   Otherwise answer from the deck.
@@ -208,6 +211,11 @@ class Claude:
         raise RuntimeError("Claude returned nothing: " + p.stderr[-400:])
 
 
+def _pictures_intro(n):
+    return (f"I've attached {n} picture{'s' if n > 1 else ''} of my own (e.g. my handwritten notes from the lecture). "
+            "These are not slides from the deck")
+
+
 def _claude_deck_blocks(pdf):
     name = os.path.basename(pdf)
     pages = page_count(pdf)
@@ -277,7 +285,8 @@ class ClaudeSession:
         threading.Thread(target=pump_err, daemon=True).start()
         self.proc, self.q, self.primed = proc, q, False
 
-    def ask(self, question, page, total, image_b64, context=""):
+    def ask(self, question, page, total, image_b64, context="", attachments=()):
+        """`attachments`: the student's own pictures as (media_type, b64) pairs."""
         # A previous answer that nobody is waiting for any more (page reloaded, deck switched) must not
         # block this one: cancel it and take over.
         if not self.lock.acquire(timeout=1):
@@ -298,6 +307,12 @@ class ClaudeSession:
             if image_b64:
                 content.append({"type": "text", "text": f"Here is slide {page} of {total}, which I'm looking at right now:"})
                 content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}})
+            for i, (media_type, data) in enumerate(attachments):
+                if i == 0:
+                    content.append({"type": "text", "text": _pictures_intro(len(attachments)) + ":"})
+                if len(attachments) > 1:
+                    content.append({"type": "text", "text": f"Picture {i + 1}:"})
+                content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
             content.append({"type": "text", "text": f"[I'm currently on slide {page} of {total}.]\n\n{question}"})
             try:
                 self.proc.stdin.write(json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n")
@@ -516,7 +531,7 @@ class TurnSession:
     def _set_proc(self, proc):
         self.proc = proc
 
-    def ask(self, question, page, total, image_b64, context=""):
+    def ask(self, question, page, total, image_b64, context="", attachments=()):
         if not self.lock.acquire(timeout=1):  # an abandoned answer is still running: stop it and take over
             self.cancel()
             if not self.lock.acquire(timeout=10):
@@ -525,7 +540,7 @@ class TurnSession:
         try:
             self.cancelled = False
             self.last_used = time.time()
-            yield from self._ask(question, page, total, image_b64, context)
+            yield from self._ask(question, page, total, image_b64, context, attachments)
         finally:
             self.proc = None
             self.last_used = time.time()
@@ -539,41 +554,60 @@ class TurnSession:
             parts.append(context)
         return parts
 
+    def _pictures_note(self, attachments, opener):
+        """Saves the student's pictures for a CLI that opens files itself, and says where they are."""
+        names = [f"`{p.name}`" for p in self._save_pictures(attachments)]
+        return (f"{_pictures_intro(len(names))}: saved as {', '.join(names)} in your workspace. Open "
+                f"{'them' if len(names) > 1 else 'it'} with your {opener} before answering.") if names else ""
+
+    def _save_pictures(self, attachments):
+        """The student's own pictures, saved in the session folder (for CLIs that attach or open files)."""
+        out = []
+        for i, (media_type, data) in enumerate(attachments, 1):
+            img = self.dir / f"picture-{i}.{media_type.split('/')[1]}"
+            img.write_bytes(base64.b64decode(data))
+            out.append(img)
+        return out
+
 
 class CodexSession(TurnSession):
     """Codex keeps the conversation as a thread; the deck text goes in the first turn, follow-ups resume it."""
 
-    def _ask(self, question, page, total, image_b64, context):
-        if True:
-            images = []
-            if image_b64:
-                img = self.dir / f"slide-{page}.jpg"
-                img.write_bytes(base64.b64decode(image_b64))
-                images.append(img)
-            parts = [] if self.thread else self._first_parts(total, context)
-            if images:
-                parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
-            parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
-            first = True
-            got = False
-            for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True,
-                                                     effort=self.effort),
-                                         "\n\n".join(parts), 600, on_proc=self._set_proc):
-                if self.cancelled:
-                    return
-                if kind == "thread" and val:
-                    self.thread = val
-                elif kind == "status":
-                    yield ("status", val)
-                elif kind == "text" and val:
-                    got = True
-                    yield ("" if first else "\n\n") + val
-                    first = False
-                elif kind == "error" and not got:
-                    yield f"\n\n**Codex error:** {val}"
-            usage = self.usage()
-            if usage:
-                yield ("usage", usage)
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
+        images = []
+        if image_b64:
+            img = self.dir / f"slide-{page}.jpg"
+            img.write_bytes(base64.b64decode(image_b64))
+            images.append(img)
+        images += self._save_pictures(attachments)
+        parts = [] if self.thread else self._first_parts(total, context)
+        if image_b64:
+            parts.append(f"The first attached image is slide {page} of {total}, which I'm looking at right now.")
+        if attachments:
+            n = len(attachments)
+            where = f"the last {n} attached images" if n > 1 else "the last attached image"
+            parts.append(f"{_pictures_intro(n)}: they're {where}.")
+        parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
+        first = True
+        got = False
+        for kind, val in self.p._run(self.p._cmd(resume=self.thread, model=self.model or None, images=images, tools=True,
+                                                 effort=self.effort),
+                                     "\n\n".join(parts), 600, on_proc=self._set_proc):
+            if self.cancelled:
+                return
+            if kind == "thread" and val:
+                self.thread = val
+            elif kind == "status":
+                yield ("status", val)
+            elif kind == "text" and val:
+                got = True
+                yield ("" if first else "\n\n") + val
+                first = False
+            elif kind == "error" and not got:
+                yield f"\n\n**Codex error:** {val}"
+        usage = self.usage()
+        if usage:
+            yield ("usage", usage)
 
     def usage(self):
         """Context + plan usage, read from the token_count events Codex writes to its session log."""
@@ -752,7 +786,7 @@ def _cursor_tool_status(call):
 class CursorSession(TurnSession):
     """Cursor CLI keeps the chat; the slide image is saved in the session's workspace for Cursor to open."""
 
-    def _ask(self, question, page, total, image_b64, context):
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
         tools = mcp.cursor_files(self.dir)
         parts = [] if self.thread else self._first_parts(total, context)
         if image_b64:
@@ -761,6 +795,8 @@ class CursorSession(TurnSession):
             parts.append(f"An image of slide {page} of {total}, which I'm looking at right now, is saved as `{name}` in "
                          "your workspace. Open it with your file-reading tool before answering, so you can see its "
                          "diagrams and equations.")
+        if attachments:
+            parts.append(self._pictures_note(attachments, "file-reading tool"))
         parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
         streamed, said, gap, thinking, used = False, False, False, False, None
         for ev in _json_events(self.p._cmd(self.dir, self.model or None, self.thread, tools), self.dir, 600,
@@ -916,19 +952,24 @@ def _grok_tool_status(ev):
 class GrokSession(TurnSession):
     """Grok runs once per question and resumes its session; the slide image goes in as an image block."""
 
-    def _ask(self, question, page, total, image_b64, context):
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
         tools = mcp.grok_files(self.dir)
         parts = [] if self.thread else self._first_parts(total, context)[1:]  # the tutor prompt is the system prompt
         if image_b64:
-            parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
+            parts.append(f"The first attached image is slide {page} of {total}, which I'm looking at right now.")
+        if attachments:
+            n = len(attachments)
+            parts.append(f"{_pictures_intro(n)}: they're the last {n} attached images." if n > 1
+                         else f"{_pictures_intro(1)}: it's the last attached image.")
         parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
         text = "\n\n".join(parts)
+        blocks = ([{"type": "image", "mimeType": "image/jpeg", "data": image_b64}] if image_b64 else []) \
+            + [{"type": "image", "mimeType": t, "data": b} for t, b in attachments]
         cmd = self.p._cmd(self.dir, self.model or None, self.effort, self.thread, TUTOR_PROMPT, tools)
-        if image_b64:
+        if blocks:
             # Images only go in through --prompt-json (on the command line), so keep it under the size limit.
             def payload(t):
-                return json.dumps([{"type": "image", "mimeType": "image/jpeg", "data": image_b64},
-                                   {"type": "text", "text": t}], ensure_ascii=False)
+                return json.dumps(blocks + [{"type": "text", "text": t}], ensure_ascii=False)
             body, keep = text, len(text)
             while len(payload(body).encode()) > GROK_ARG_BUDGET and keep > 0:
                 keep -= max(10_000, len(payload(body).encode()) - GROK_ARG_BUDGET)
@@ -1092,7 +1133,7 @@ class AntigravitySession(TurnSession):
     """Antigravity runs once per question and resumes its conversation by id; the slide image is saved in the
     session's folder for it to open (its stdin only takes text)."""
 
-    def _ask(self, question, page, total, image_b64, context):
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
         mcp.antigravity_files(self.dir)
         parts = [] if self.thread else self._first_parts(total, context)
         if image_b64:
@@ -1101,6 +1142,8 @@ class AntigravitySession(TurnSession):
             parts.append(f"An image of slide {page} of {total}, which I'm looking at right now, is saved as `{name}` in "
                          "your workspace. Open it with your file viewer before answering, so you can see its diagrams "
                          "and equations. Don't mention or link the file itself.")
+        if attachments:
+            parts.append(self._pictures_note(attachments, "file viewer"))
         parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
         said = yield from self._turn("\n\n".join(parts))
         if said is None:  # a refused tool ended the turn before any answer: say so and ask once more
@@ -1312,7 +1355,7 @@ class OllamaSession(TurnSession):
             except Exception:
                 pass
 
-    def _ask(self, question, page, total, image_b64, context):
+    def _ask(self, question, page, total, image_b64, context, attachments=()):
         models = ollama_models()
         model = self.model or self.p.pick_model(models)
         if not model:
@@ -1327,11 +1370,16 @@ class OllamaSession(TurnSession):
             if context:
                 parts.append(context[-int(4000 * CHARS_PER_TOKEN):])  # lecture notes / earlier chat, kept short
             self.ctx = _fit_ctx(len(TUTOR_PROMPT) + sum(map(len, parts)) + len(question), info.get("context_window"))
-        see = bool(image_b64 and info.get("vision"))
-        if see:
-            parts.append(f"The attached image is slide {page} of {total}, which I'm looking at right now.")
+        vision = bool(info.get("vision"))
+        images = ([image_b64] if image_b64 else []) + [b for _, b in attachments] if vision else []
+        if image_b64 and vision:
+            parts.append(f"The first attached image is slide {page} of {total}, which I'm looking at right now.")
+        if attachments:
+            parts.append(f"{_pictures_intro(len(attachments))}: they're the last attached images." if vision else
+                         "(I attached pictures of my own, but this model can't see images, so tell me to pick a model "
+                         "that can, or to describe what's in them.)")
         parts.append(f"[I'm currently on slide {page} of {total}.]\n\n{question}")
-        user = {"role": "user", "content": "\n\n".join(parts), **({"images": [image_b64]} if see else {})}
+        user = {"role": "user", "content": "\n\n".join(parts), **({"images": images} if images else {})}
         # Keep the deck (first exchange) and drop the oldest follow-ups once the chat outgrows the context.
         def size(msgs):
             return sum(len(m["content"]) + (1500 * CHARS_PER_TOKEN if m.get("images") else 0) for m in msgs) / CHARS_PER_TOKEN
@@ -1395,17 +1443,63 @@ def model_for(kind="chat"):
     return cfg.get(f"{name}_model") or None  # blank = that CLI's own default
 
 
-def open_login_terminal(name):
-    """Sign-in flows are interactive, so run them in Terminal where the user can see them."""
-    p = PROVIDERS.get(name)
-    b = p and p.bin()
-    if not b:
+BREW_INSTALL = ('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n'
+                'eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"')
+OLLAMA_APP_INSTALL = ('curl -fL --progress-bar -o /tmp/Ollama.zip https://ollama.com/download/Ollama-darwin.zip || exit 1\n'
+                      'ditto -x -k /tmp/Ollama.zip /Applications && rm -f /tmp/Ollama.zip || exit 1')
+SIGN_IN = {  # what to say before signing in, and the command (the script's PATH covers the usual install folders)
+    "claude": ("Your browser opens: sign in with your Claude Pro or Max account.", "claude auth login"),
+    "codex": ("Your browser opens: sign in with your ChatGPT account.", "codex login"),
+    "cursor": ("Your browser opens: sign in with your Cursor account.", "cursor-agent login"),
+    "grok": ("Your browser opens: sign in with your grok.com account.", "grok login"),
+}
+CURL_INSTALL = {"claude": "https://claude.ai/install.sh", "cursor": "https://cursor.com/install",
+                "grok": "https://x.ai/cli/install.sh", "antigravity": "https://antigravity.google/cli/install.sh"}
+
+
+def setup_script(name, install):
+    """Shell steps that install (if asked) and sign in to a provider, for a Terminal window."""
+    label = PROVIDERS[name].label
+    steps = [f'echo "Installing {label}…"'] if install else []
+    if install and name in CURL_INSTALL:
+        steps += [f"curl -fsSL {CURL_INSTALL[name]} | bash || exit 1"]
+    elif install and name == "codex":
+        if config.which("brew"):
+            steps += ["brew install codex || exit 1"]
+        elif config.which("npm"):
+            steps += ["npm install -g @openai/codex || exit 1"]
+        else:
+            steps += ['echo "Codex installs with Homebrew, which asks for your Mac password once."', BREW_INSTALL,
+                      "brew install codex || exit 1"]
+    elif install and name == "ollama":
+        steps += [OLLAMA_APP_INSTALL]
+    if name in SIGN_IN:
+        say, cmd = SIGN_IN[name]
+        steps += [f'echo; echo "Signing in. {say}"', f"{cmd} || exit 1"]
+    elif name == "antigravity":
+        # Antigravity has no login command: starting it signs you in. Run it in SlideMate's scratch folder.
+        steps += ['echo; echo "Signing in. Antigravity starts and opens your browser: sign in with your Google account."',
+                  'echo "Once it says you are signed in, press Ctrl-C twice to quit it."; echo',
+                  f"cd '{config.WORK}' && agy"]
+    elif name == "ollama":
+        steps += ['echo; echo "Starting Ollama and downloading a model that can read slides (about 6 GB)…"',
+                  "ollama list >/dev/null 2>&1 || open -a Ollama || (nohup ollama serve >/dev/null 2>&1 &)",
+                  "for i in $(seq 1 30); do ollama list >/dev/null 2>&1 && break; sleep 1; done",
+                  f"ollama pull {OLLAMA_SUGGESTED} || exit 1"]
+    return steps
+
+
+def open_setup_terminal(name, install=False):
+    """Install and sign-in are interactive (browser sign-in, maybe a password), so they run in a Terminal window
+    the user can see. SlideMate notices by itself when sign-in has finished."""
+    if name not in PROVIDERS or (not install and not PROVIDERS[name].bin()):
         return False
-    # Antigravity has no login command: starting it signs you in. Run it in SlideMate's scratch folder.
-    # Ollama: start it if it isn't running, then download the suggested model.
-    cmd = {"claude": f"'{b}' auth login", "antigravity": f"cd '{config.WORK}' && '{b}'",
-           "ollama": f"'{b}' list >/dev/null 2>&1 || open -a Ollama 2>/dev/null || (nohup '{b}' serve >/dev/null 2>&1 &); "
-                     f"sleep 3; '{b}' pull {OLLAMA_SUGGESTED}"}.get(name, f"'{b}' login")
-    script = f'tell application "Terminal"\nactivate\ndo script "{cmd}"\nend tell'
-    subprocess.Popen(["osascript", "-e", script])
+    path = config.DATA / "setup" / f"{name}-setup.command"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/bash\n"
+                    f'export PATH="{config.ENV["PATH"]}:/Applications/Ollama.app/Contents/Resources"\n'
+                    "clear\n" + "\n".join(setup_script(name, install)) + "\n"
+                    'echo; echo "✓ Done. You can close this window and go back to SlideMate."\n')
+    path.chmod(0o755)
+    subprocess.Popen(["open", "-a", "Terminal", str(path)])
     return True

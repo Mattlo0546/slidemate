@@ -13,8 +13,9 @@ CONFIG_PATH = DATA / "config.json"
 WORK = DATA / "work"          # scratch dir the AI CLIs run in (never your files)
 CHATS = DATA / "chats"
 LECTURES = DATA / "lectures"
+CHAT_IMAGES = DATA / "chat-images"  # pictures the student attached to chat questions
 SNAPS = HOME / "Pictures" / "SlideMate"
-for d in (DATA, WORK, CHATS, LECTURES):
+for d in (DATA, WORK, CHATS, LECTURES, CHAT_IMAGES):
     d.mkdir(parents=True, exist_ok=True)
 
 # Tools are looked up on a PATH that includes the usual install locations, because apps
@@ -55,6 +56,11 @@ DEFAULTS = {
     "course_titles": {},            # course folder → display name (renames are display-only)
     "mcp_servers": {},              # MCP servers the tutor can use (see mcp.py)
     "sync_mcp": {"server": "", "tool": "", "login_tool": ""},  # optional: an MCP tool behind the Sync button
+    "cards_auto": True,             # make flashcards when a lecture's notes are written
+    "cards_from_chats": True,       # add cards for what you asked the tutor, once a revision session goes quiet
+    "cards_new_per_day": 20,        # new flashcards introduced per day (all decks together)
+    "cards_retention": 0.9,         # FSRS target: the chance you still remember a card when it comes up
+    "cards_since": 0,               # when flashcards were first switched on (older lectures are made on request)
 }
 
 

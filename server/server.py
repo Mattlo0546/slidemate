@@ -5,6 +5,7 @@ Standard library only (Python 3.9+). Listens on 127.0.0.1 only. Run it directly 
     python3 server/server.py          # then open http://127.0.0.1:8767
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -18,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import config
+import flashcards
 import lecture
 import library as lib
 import mcp
@@ -51,9 +53,49 @@ def tutor_context(path):
                      "questions about the lecture):\n\n" + notes)
     msgs = lib.load_chat(path)["messages"][-40:]
     if msgs:
-        lines = [f"[slide {m.get('slide')}] {'Student' if m['role'] == 'user' else 'You'}: {m['text']}" for m in msgs]
+        lines = [f"[slide {m.get('slide')}] {'Student' if m['role'] == 'user' else 'You'}: {m['text']}"
+                 + (f" [attached {len(m['images'])} picture(s), not re-sent]" if m.get("images") else "") for m in msgs]
         parts.append("Our earlier conversation about this deck (for continuity; don't repeat it):\n\n" + "\n\n".join(lines)[-60000:])
     return "\n\n---\n\n".join(parts)
+
+
+# ------------------------------------------------------------------ pictures attached to chat questions
+
+IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+MAX_ATTACHMENTS = 10
+
+
+def parse_data_url(url):
+    """'data:image/jpeg;base64,...' -> (media_type, b64), or None if it isn't an image the AIs accept."""
+    m = re.match(r"data:([\w/+.-]+);base64,(.+)", url or "", re.S)
+    return (m.group(1), m.group(2)) if m and m.group(1) in IMAGE_TYPES else None
+
+
+def to_jpeg(raw, max_side=1568):
+    """Any image macOS can read (HEIC from an iPhone, TIFF, ...) -> JPEG bytes with the longest side capped."""
+    with tempfile.TemporaryDirectory(dir=config.WORK) as tmp:
+        src, out = Path(tmp) / "in", Path(tmp) / "out.jpg"
+        src.write_bytes(raw)
+        info = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(src)],
+                              capture_output=True, text=True, timeout=30).stdout
+        dims = [int(x) for x in re.findall(r"pixel(?:Width|Height):\s*(\d+)", info)]
+        if not dims:
+            return None
+        cmd = ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "85"]
+        if max(dims) > max_side:
+            cmd += ["-Z", str(max_side)]
+        subprocess.run(cmd + [str(src), "--out", str(out)], capture_output=True, timeout=60)
+        return out.read_bytes() if out.exists() else None
+
+
+def save_chat_image(media_type, b64):
+    """Store an attached picture once (content-addressed) so the chat history can show it again."""
+    raw = base64.b64decode(b64)
+    name = hashlib.sha1(raw).hexdigest()[:20] + IMAGE_TYPES[media_type]
+    f = config.CHAT_IMAGES / name
+    if not f.exists():
+        f.write_bytes(raw)
+    return name
 
 
 # ------------------------------------------------------------------ send to iPad
@@ -84,7 +126,7 @@ def airdrop(png_path, device):
             result = json.loads(status.read_text())
         except Exception:
             continue
-        if result.get("state") in ("clicked", "failed") or (result.get("state") == "panel" and not (device and result.get("trusted"))):
+        if result.get("state") in ("clicked", "failed", "notfound") or (result.get("state") == "panel" and not (device and result.get("trusted"))):
             break
     threading.Timer(90, lambda: status.unlink(missing_ok=True)).start()
     return result
@@ -112,10 +154,12 @@ def pick_folder():
     return p.stdout.strip().rstrip("/") or None
 
 
-def status():
+def status(only=None):
+    """Setup status. `only` (provider names) limits the checks, which run CLIs and some go over the network."""
     cfg = config.load()
-    with ThreadPoolExecutor(len(providers.PROVIDERS)) as pool:  # each check runs a CLI, so do them at once
-        checks = {n: pool.submit(p.status) for n, p in providers.PROVIDERS.items()}
+    which = {n: p for n, p in providers.PROVIDERS.items() if not only or n in only} or providers.PROVIDERS
+    with ThreadPoolExecutor(len(which)) as pool:  # each check runs a CLI, so do them at once
+        checks = {n: pool.submit(p.status) for n, p in which.items()}
     return {"providers": {n: f.result() for n, f in checks.items()}, "provider": cfg["provider"],
             "recording": lecture.tools_status(), "pdftools": bool(config.which("pdftotext")),
             "helper": bool(config.helper_app()), "data_dir": str(config.DATA)}
@@ -124,7 +168,8 @@ def status():
 # ------------------------------------------------------------------ HTTP
 
 MIME = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
-        ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".png": "image/png", ".svg": "image/svg+xml",
+        ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif",
+        ".webp": "image/webp", ".svg": "image/svg+xml",
         ".json": "application/json"}
 
 
@@ -164,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         arg = lambda k: q.get(k, [""])[0]
         if u.path == "/api/health":
-            return self._json({"ok": True, "app": "slidemate"})
+            return self._json({"ok": True, "app": "slidemate", "features": ["import-sentences"]})
         if u.path.startswith("/api/"):
             if not self._api_ok():
                 return
@@ -197,17 +242,39 @@ class Handler(BaseHTTPRequestHandler):
                 u_ = USAGE.get(arg("path")) or {}
                 return self._json({**u_, "limits": providers.LIMITS.get(config.load()["provider"], u_.get("limits", []))})
             if u.path == "/api/status":
-                return self._json(status())
+                only = (urllib.parse.parse_qs(u.query).get("only") or [""])[0]
+                return self._json(status([n for n in only.split(",") if n]))
             if u.path == "/api/trust":
                 return self._json({"trusted": helper_trust(False)})
             if u.path == "/api/chat-history":
                 return self._json(lib.load_chat(arg("path")))
+            if u.path == "/api/chat-image":
+                name = arg("name")
+                f = config.CHAT_IMAGES / name
+                if not re.fullmatch(r"[0-9a-f]{20}\.(jpg|png|gif|webp)", name) or not f.is_file():
+                    return self._json({"error": "not found"}, 404)
+                return self._file(f, MIME[f.suffix])
             if u.path == "/api/lectures":
                 return self._json(lecture.list_for_deck(arg("path")))
             if u.path == "/api/lecture":
                 return self._json(lecture.get(arg("id")))
             if u.path == "/api/lecture/audio":
                 return self._audio(lecture.audio_path(arg("id")))
+            if u.path == "/api/cards/overview":
+                return self._json(flashcards.overview())
+            if u.path == "/api/cards/deck":
+                deck = flashcards.load(arg("path")) or {"path": arg("path"), "subtopics": [], "cards": []}
+                deck.pop("log", None)
+                msgs = lib.load_chat(arg("path"))["messages"]
+                ret = flashcards.retention()
+                for c in deck["cards"]:
+                    c["previews"] = flashcards.previews(c, ret=ret)
+                return self._json({**deck, "job": flashcards.job(arg("path")), "counts": flashcards.counts(deck),
+                                   "lectures_done": len(flashcards.lectures_for(arg("path"))),
+                                   "questions": len(flashcards._own_questions(msgs)),
+                                   "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0})
+            if u.path == "/api/cards/queue":
+                return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic")))
             return self._json({"error": "unknown"}, 404)
         rel = "index.html" if u.path in ("/", "") else urllib.parse.unquote(u.path.lstrip("/"))
         f = (config.STATIC / rel).resolve()
@@ -257,6 +324,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if u.path == "/api/upload":
             return self._upload()
+        if u.path == "/api/convert-image":
+            # For pictures the web view can't decode itself.
+            try:
+                jpg = to_jpeg(self._body())
+            except Exception as e:
+                print("convert-image failed", e, flush=True)
+                jpg = None
+            if not jpg:
+                return self._json({"error": "couldn't read that image"}, 400)
+            return self._json({"image": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
         if u.path == "/api/lecture/chunk":
             q = urllib.parse.parse_qs(u.query)
             ok = lecture.add_chunk(q["id"][0], int(q["seq"][0]), self._body())
@@ -321,7 +398,7 @@ class Handler(BaseHTTPRequestHandler):
                 "files them into the right course for you.\n")
             return self._json({"path": str(root)})
         if p == "/api/login":
-            return self._json({"ok": providers.open_login_terminal(body.get("provider", "claude"))})
+            return self._json({"ok": providers.open_setup_terminal(body.get("provider", "claude"), bool(body.get("install")))})
         if p == "/api/library/manage":
             return self._json(lib.manage(body.get("target", ""), body.get("action", ""), body.get("title")))
         if p == "/api/library/set":
@@ -354,13 +431,30 @@ class Handler(BaseHTTPRequestHandler):
             lecture.stop(body["id"])
             return self._json({"ok": True})
         if p == "/api/lecture/import":
-            return self._json({"id": lecture.import_transcript(body["path"], body.get("text", ""), body.get("date"))})
+            return self._json({"id": lecture.import_transcript(
+                body["path"], body.get("text", ""), body.get("date"), sentences=body.get("sentences"),
+                source=body.get("source") or "imported", fill_from=body.get("fill_from"), extra=body.get("extra"))})
         if p == "/api/lecture/regenerate":
             lecture.regenerate(body["id"])
             return self._json({"ok": True})
         if p == "/api/lecture/delete":
             lecture.delete(body["id"])
             return self._json({"ok": True})
+        if p == "/api/cards/make":
+            for path in body.get("paths") or [body.get("path")]:
+                if path and os.path.isfile(path):
+                    flashcards.request(path, body.get("mode", "auto"), body.get("why", "manual"))
+            return self._json({"ok": True, "job": flashcards.job(body.get("path"))})
+        if p == "/api/cards/review":
+            return self._json(flashcards.review(body["path"], body["id"], int(body["rating"])))
+        if p == "/api/cards/undo":
+            return self._json(flashcards.undo(body["path"], body["id"]))
+        if p == "/api/cards/edit":
+            return self._json(flashcards.edit(body["path"], body["id"], body))
+        if p == "/api/cards/delete-deck":
+            return self._json(flashcards.delete_deck(body["path"]))
+        if p == "/api/cards/export":
+            return self._json(flashcards.export_anki(body["path"]))
         return self._json({"error": "unknown"}, 404)
 
     def _upload(self):
@@ -389,6 +483,7 @@ class Handler(BaseHTTPRequestHandler):
         sess = get_session(path)
         img = body.get("image") or ""
         img = img.split(",", 1)[1] if "," in img else img
+        attachments = [a for a in map(parse_data_url, body.get("attachments") or []) if a][:MAX_ATTACHMENTS]
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -397,6 +492,8 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         question, page = body.get("question", "Explain this slide."), body.get("page", 1)
         user_msg = {"role": "user", "text": body.get("display") or question, "slide": page, "ts": time.time(), "snip": bool(body.get("snip"))}
+        if attachments:
+            user_msg["images"] = [save_chat_image(t, b) for t, b in attachments]
         answer, gone = [], False
         # Lecture notes: the whole set goes in when the session starts (or when notes appear/change mid-session),
         # and what the lecturer said about *this* slide goes with every question.
@@ -409,7 +506,7 @@ class Handler(BaseHTTPRequestHandler):
         here = lecture.slide_notes(path, page)
         if here:
             question = f"{here}\n\n---\n\n{question}"
-        for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path)):
+        for chunk in sess.ask(question, page, body.get("total", 1), img, tutor_context(path), attachments):
             if isinstance(chunk, tuple):  # ("status", "Using blackboard › …") / ("usage", {...}): live only, not saved
                 if chunk[0] == "usage":
                     USAGE[path] = chunk[1]
@@ -477,6 +574,8 @@ def housekeeping():
                     lib.sort_inbox()
                 if n % 20 == 0:
                     lib.classify_pending()
+                if n % 4 == 0:
+                    flashcards.check_chats()
         except Exception as e:
             print("housekeeping", e, flush=True)
         n += 1
@@ -512,7 +611,9 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
+    lecture.ON_NOTES_DONE.append(flashcards.on_notes_done)
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
+    threading.Timer(20, flashcards.catch_up).start()  # and flashcards that weren't made because the app quit
     threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
