@@ -129,12 +129,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         let res = Bundle.main.resourceURL!
         let env = ProcessInfo.processInfo.environment
         let script = env["SLIDEMATE_SERVER"].map { URL(fileURLWithPath: $0) } ?? res.appendingPathComponent("server/server.py")
-        // /usr/bin/python3 is only a stub until the Xcode Command Line Tools are installed.
+        // The app carries its own Python (scripts/build-app.sh). The rest is for builds without it, e.g. an
+        // older checkout: /usr/bin/python3 is only a stub until the Xcode Command Line Tools are installed.
+        let bundled = res.appendingPathComponent("python/bin/python3").path
         let cltInstalled = FileManager.default.fileExists(atPath: "/Library/Developer/CommandLineTools/usr/bin/python3")
             || FileManager.default.fileExists(atPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/python3")
-        let pythons = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"] + (cltInstalled ? ["/usr/bin/python3"] : [])
+        let pythons = [bundled, "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] + (cltInstalled ? ["/usr/bin/python3"] : [])
         guard let python = pythons.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             return installCommandLineTools { [weak self] in self?.spawnServer(done) }
+        }
+        if python == bundled {
+            // While the app's files still carry the download's quarantine flag, macOS kills programs inside it
+            // (like the bundled Python) that it starts. The app is running, so the user approved it: clear the flag.
+            let x = Process()
+            x.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+            x.arguments = ["-dr", "com.apple.quarantine", Bundle.main.bundleURL.path]
+            x.standardError = FileHandle.nullDevice
+            try? x.run(); x.waitUntilExit()
         }
         try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
         let logURL = logDir.appendingPathComponent("server.log")
@@ -149,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         penv["SLIDEMATE_PORT"] = port
         penv["SLIDEMATE_HELPER"] = res.appendingPathComponent("Helpers/SlideMateAirDrop.app").path
         penv["PYTHONUNBUFFERED"] = "1"
+        penv["PYTHONDONTWRITEBYTECODE"] = "1"  // never write .pyc files into the (signed) app bundle
+        if python == bundled { ["PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"].forEach { penv.removeValue(forKey: $0) } }
         penv["SLIDEMATE_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)  // server exits if the app dies
         p.environment = penv
         p.standardOutput = log

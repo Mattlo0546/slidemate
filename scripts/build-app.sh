@@ -82,6 +82,42 @@ PLIST
 
 echo "• Bundling server…"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' server "$APP/Contents/Resources/"
+
+# A standalone Python (python-build-standalone) goes in the app, so it never needs Apple's Command Line Tools,
+# whose installer can ask for 15+ GB of free space. Both architectures are merged into one universal tree, and
+# what the server never uses (Tk, IDLE, pip, tests, headers) is left out.
+PY_VERSION=3.13.16 PY_BUILD=20261013
+PY_SHA_aarch64=16a5332fb0dcb77f163fc8f8cbccd95be1644cc53e68e5d2a79f50afd6680a0e
+PY_SHA_x86_64=f507ae04eb7747cd97cb484e8c5d83936cbfc52d9b08a1f35c00b47c707b1ae1
+PY_CACHE="${SLIDEMATE_PYTHON_CACHE:-$HOME/Library/Caches/SlideMate}/python-$PY_VERSION-$PY_BUILD-universal"
+if [ ! -x "$PY_CACHE/bin/python3" ]; then
+  echo "• Downloading Python $PY_VERSION…"
+  TMP=$(mktemp -d)
+  for arch in aarch64 x86_64; do
+    tgz="$TMP/$arch.tar.gz"
+    curl -fsSL -o "$tgz" "https://github.com/astral-sh/python-build-standalone/releases/download/$PY_BUILD/cpython-$PY_VERSION+$PY_BUILD-$arch-apple-darwin-install_only_stripped.tar.gz"
+    want="PY_SHA_$arch"
+    [ "$(shasum -a 256 "$tgz" | cut -d' ' -f1)" = "${!want}" ] || { echo "Python download for $arch failed its checksum"; exit 1; }
+    mkdir -p "$TMP/$arch" && tar -xzf "$tgz" -C "$TMP/$arch"
+    P="$TMP/$arch/python"
+    rm -rf "$P/include" "$P/share" "$P/lib/pkgconfig" "$P/lib/libpython3.13.dylib" "$P"/lib/libtcl* "$P"/lib/itcl* \
+      "$P"/lib/tcl* "$P"/lib/tk* "$P"/lib/thread* "$P"/lib/python3.13/lib-dynload/_tkinter*
+    (cd "$P/lib/python3.13" && rm -rf test idlelib tkinter turtledemo turtle.py ensurepip pydoc_data lib2to3 \
+      config-3.13-darwin site-packages/* venv)
+    (cd "$P/bin" && ls | grep -vx -e python3 -e python3.13 | xargs rm -f)
+  done
+  # The binary is statically linked, so the stdlib's few compiled modules are the only other code to merge.
+  A="$TMP/aarch64/python" X="$TMP/x86_64/python"
+  (cd "$A" && find . -type f) | while read -r f; do
+    if file -b "$A/$f" | grep -q Mach-O; then
+      lipo -create "$A/$f" "$X/$f" -output "$A/$f.uni" && mv "$A/$f.uni" "$A/$f"
+      codesign -s - --force "$A/$f" >/dev/null 2>&1
+    fi
+  done
+  rm -rf "$PY_CACHE" && mkdir -p "$(dirname "$PY_CACHE")" && mv "$A" "$PY_CACHE"
+  rm -rf "$TMP"
+fi
+ditto "$PY_CACHE" "$APP/Contents/Resources/python"
 ditto "$HELPER_CACHE" "$APP/Contents/Resources/Helpers/SlideMateAirDrop.app"
 
 echo "• Icon…"

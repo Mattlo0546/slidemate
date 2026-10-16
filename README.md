@@ -128,7 +128,7 @@ git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts
 
 Either way you need one AI to tutor you: a Claude, ChatGPT, Cursor or Grok plan, a Google account (Gemini through
 Antigravity, free plan included), or a free model on your Mac with Ollama. The setup screen installs whichever you pick
-and signs you in with one click (and SlideMate installs Apple's Command Line Tools itself if they're missing).
+and signs you in with one click. Nothing else to install: SlideMate brings its own Python.
 
 ---
 
@@ -149,7 +149,6 @@ version is out, so later updates open without the prompt. Choose SlideMate → *
 You'll also need:
 - **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
   setup screen installs and signs in to any of them with one click (see the table below).
-- **Apple's Command Line Tools** for Python. If they're missing, SlideMate opens Apple's installer for you on first launch.
 - **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (every provider except Claude
   reads it) and lecture recording. The setup screen tells you if anything is missing.
 
@@ -274,8 +273,9 @@ Not yet. It's macOS 13+ (Apple Silicon and Intel), and sends slides to your iPad
 
 ## How it works
 
-SlideMate is a small local web app: a Python server (standard library only) on `127.0.0.1`, and a web UI using
-PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) that starts the server and shows the UI.
+SlideMate is a small local web app: a Python server (standard library only, on a Python bundled in the app) on
+`127.0.0.1`, and a web UI using PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) that
+starts the server and shows the UI.
 
 | Piece | Where |
 | --- | --- |
