@@ -2269,7 +2269,7 @@ async function loadLectures(path, selectId) {
   const keep = selectId || (lec.cur && lec.list.some((l) => l.id === lec.cur) ? lec.cur : null);
   lec.cur = keep || lec.list.find((l) => l.status === 'done')?.id || lec.list[0]?.id || null;
   const pick = $('#lecturePick');
-  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${l.source === 'imported' ? 'imported' : 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
+  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${{ imported: 'imported', replay: 'Re/Play' }[l.source] || 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
   pick.value = lec.cur || '';
   pick.hidden = lec.list.length < 2;
   await loadLecture();
@@ -2340,7 +2340,9 @@ function renderNotes() {
     return;
   }
   const quotes = (s.quotes || []).map((q) => `<div class="quote">
-      ${q.start != null && d.has_audio ? `<button class="play" data-t="${q.start}">${icon('play')}${fmtT(q.start)}</button>` : (q.start != null ? `<span class="muted small">${fmtT(q.start)}</span>` : '')}
+      ${q.start != null && d.has_audio && !q.lecture ? `<button class="play" data-t="${q.start}">${icon('play')}${fmtT(q.start)}</button>`
+        : q.start != null && m.replay_url && !q.lecture ? `<a class="muted small" href="${esc(m.replay_url)}?playFrom=${Math.round(q.start * 1000)}" title="Watch this moment on Re/Play">${fmtT(q.start)} ↗</a>`
+        : (q.start != null ? `<span class="muted small">${fmtT(q.start)}</span>` : '')}
       <blockquote>${esc(q.text)}</blockquote></div>`).join('');
   pane.innerHTML = `<h2>Slide ${n}: what the lecturer said</h2>${mdRender(s.notes_md || '')}
     ${quotes ? `<div class="said"><div class="lbl">Verbatim from the lecture</div>${quotes}</div>` : ''}`;

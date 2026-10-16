@@ -227,7 +227,8 @@ for you) and is copied to the clipboard for pasting via Universal Clipboard.
 **Can it turn a lecture recording into notes?**
 Yes. Press **Record** in class. It transcribes on-device (NVIDIA Parakeet), tracks which slide was showing, and
 writes a summary plus notes for each slide with the lecturer's exact words. You can also import an Otter or Granola
-transcript.
+transcript, or have a tool send one in (e.g. lecture-capture captions) through `POST /api/lecture/import` with
+timed `sentences`. With `fill_from`, an earlier lecture's slide notes are kept and only the slides it missed are filled.
 
 **Is it free? Is there a NotebookLM alternative for lecture slides?**
 SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Unlike

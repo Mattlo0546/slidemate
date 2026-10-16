@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         arg = lambda k: q.get(k, [""])[0]
         if u.path == "/api/health":
-            return self._json({"ok": True, "app": "slidemate"})
+            return self._json({"ok": True, "app": "slidemate", "features": ["import-sentences"]})
         if u.path.startswith("/api/"):
             if not self._api_ok():
                 return
@@ -425,7 +425,9 @@ class Handler(BaseHTTPRequestHandler):
             lecture.stop(body["id"])
             return self._json({"ok": True})
         if p == "/api/lecture/import":
-            return self._json({"id": lecture.import_transcript(body["path"], body.get("text", ""), body.get("date"))})
+            return self._json({"id": lecture.import_transcript(
+                body["path"], body.get("text", ""), body.get("date"), sentences=body.get("sentences"),
+                source=body.get("source") or "imported", fill_from=body.get("fill_from"), extra=body.get("extra"))})
         if p == "/api/lecture/regenerate":
             lecture.regenerate(body["id"])
             return self._json({"ok": True})
