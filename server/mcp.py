@@ -274,6 +274,11 @@ def _pick(tools, patterns):
     return ""
 
 
+def is_sync_tool(tool):
+    """Whether a tool looks like something Pull can call with no arguments (bb_sync, gc_sync, moodle_sync…)."""
+    return bool(tool) and any(rx.search(tool) for rx in SYNC_RE)
+
+
 def detect_sync(name):
     """If this server has a sync-style tool, return {"server", "tool", "login_tool"}."""
     spec = (config.load().get("mcp_servers") or {}).get(name) or {}
@@ -291,11 +296,24 @@ def autoconfigure(name):
         return
     cfg = config.load()
     cur = cfg.get("sync_mcp") or {}
-    if (cur.get("server") and cur.get("tool")) or cfg.get("sync_command", "").strip():
+    # Keep a working Pull setup, but replace one pointing at a tool that can't sync (e.g. a JavaScript tool picked
+    # by accident before a real sync server was added).
+    if (cur.get("server") and is_sync_tool(cur.get("tool"))) or cfg.get("sync_command", "").strip():
         return
     found = detect_sync(name)
     if found:
         config.update({"sync_mcp": found})
+
+
+def repair_sync():
+    """At startup: if Pull is set to a tool that can't sync, switch to a server that can (or clear it), so Pull
+    stops failing with that tool's 'missing argument' error."""
+    cfg = config.load()
+    cur = cfg.get("sync_mcp") or {}
+    if not cur.get("tool") or is_sync_tool(cur["tool"]):
+        return
+    found = next((f for f in map(detect_sync, cfg.get("mcp_servers") or {}) if f), None)
+    config.update({"sync_mcp": found or {"server": "", "tool": "", "login_tool": ""}})
 
 
 def _parse(text):

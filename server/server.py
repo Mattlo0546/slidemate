@@ -615,6 +615,10 @@ def main():
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
     threading.Timer(20, flashcards.catch_up).start()  # and flashcards that weren't made because the app quit
     threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
+    try:
+        mcp.repair_sync()  # a Pull set to a tool that can't sync (e.g. picked by accident) → one that can
+    except Exception as e:
+        print("repair_sync", e, flush=True)
     srv = ThreadingHTTPServer(("127.0.0.1", config.PORT), Handler)
     srv.daemon_threads = True
     print(f"SlideMate running on http://127.0.0.1:{config.PORT}  (data: {config.DATA})", flush=True)

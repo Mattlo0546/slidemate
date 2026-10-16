@@ -1394,13 +1394,18 @@ function renderSyncMode() {
   if (mode !== 'mcp') return;
   const servers = Object.keys(cfg.mcp_servers || {}).filter((n) => !(cfg.mcp_servers[n].url));
   const cur = cfg.sync_mcp || {};
-  const sel = $('#syncServer').value || cur.server || servers[0] || '';
+  // Default to a server that has a sync-style tool (e.g. moodle_sync), not just the first one.
+  const canSync = (n) => (cfg.mcp_servers[n].tools || []).some((t) => /sync(?!_status)|pull/i.test(t));
+  const sel = $('#syncServer').value || cur.server || servers.find(canSync) || servers[0] || '';
   $('#syncServer').innerHTML = servers.length ? servers.map((n) => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('') : '<option value="">Add a connection first</option>';
   const tools = mcpTools[sel]?.tools;
   if (sel && !tools && !mcpTools[sel]?.pending && !mcpTools[sel]?.error) { mcpTest(sel); return; }
   const opts = (list, val, blank) => (blank ? `<option value="">${blank}</option>` : '') + (list || (val ? [val] : [])).map((t) => `<option ${t === val ? 'selected' : ''}>${esc(t)}</option>`).join('');
   const guess = (...res) => { for (const re of res) { const t = (tools || []).find((x) => re.test(x)); if (t) return t; } return ''; };
-  $('#syncTool').innerHTML = opts(tools, cur.server === sel && cur.tool ? cur.tool : guess(/(^|_)sync$/i, /sync(?!_status)/i, /pull/i, /download/i));
+  // A blank first choice: without it the browser picks the server's first tool (e.g. a JavaScript tool), and Pull
+  // would call it with no arguments and fail.
+  $('#syncTool').innerHTML = opts(tools, cur.server === sel && cur.tool ? cur.tool : guess(/(^|_)sync$/i, /sync(?!_status)/i, /pull/i, /download/i),
+    tools && !tools.some((t) => /sync(?!_status)|pull|download/i.test(t)) ? 'This server has no sync tool' : 'Choose a tool…');
   $('#syncLoginTool').innerHTML = opts(tools, cur.server === sel ? cur.login_tool : guess(/(^|_)login$/i, /login|sign.?in|auth/i), 'None');
 }
 $('#setSyncMode').addEventListener('change', renderSyncMode);
