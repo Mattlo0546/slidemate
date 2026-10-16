@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -110,7 +111,53 @@ def _helper_status_file():
     return Path(tempfile.mktemp(prefix="airdrop-", suffix=".json", dir=config.WORK))
 
 
+# Apostrophe look-alikes. iPads name themselves "Name’s iPad" (’), and keyboards can type ‘ or ' instead. The helper
+# treats ' and ’ alike, so it gets a plain '.
+QUOTES = str.maketrans({c: "'" for c in "\u2018\u2019\u02bc\u0060\u00b4\u2032\uff07"})
+
+
+def _loose(name):
+    """A device name for loose comparison: letters and digits only, so "Cheng‘s iPadPro2022" matches
+    "cheng’s iPad Pro 2022"."""
+    return re.sub(r"[\W_]+", "", unicodedata.normalize("NFKC", name).casefold())
+
+
+def _seen_names(result):
+    """The labels the helper saw in the AirDrop panel ("process: label | label")."""
+    out = []
+    for entry in result.get("seen") or []:
+        for part in entry.split(": ", 1)[-1].split(" | "):
+            part = part.strip()
+            if part and part not in out:
+                out.append(part)
+    return out
+
+
+def _closest_device(device, seen):
+    """A label in the AirDrop panel that is the wanted device, written differently (spaces, apostrophes, case)."""
+    want = [w for w in {_loose(device), _loose(re.sub(r"\s*\(\d+\)$", "", device))} if len(w) >= 4]
+    hits = [n for n in seen if any(w == _loose(n) for w in want)] or \
+           [n for n in seen if any(_loose(n).startswith(w) for w in want) and len(_loose(n)) <= 40]
+    return min(hits, key=len) if hits else None
+
+
 def airdrop(png_path, device):
+    result = _airdrop_once(png_path, device and device.translate(QUOTES))
+    if device and result.get("state") == "notfound":
+        seen = _seen_names(result)
+        found = _closest_device(device, seen)
+        if found and found.translate(QUOTES) != device.translate(QUOTES):
+            # The iPad is there under a slightly different name: send to it, and remember that spelling.
+            retry = _airdrop_once(png_path, found.translate(QUOTES))
+            if retry.get("state") == "clicked":
+                config.update({"ipad_name": found})
+                retry.update(device=found, renamed=True)
+            return retry
+        result["nearby"] = [n for n in seen if "ipad" in _loose(n)][:3]  # to help fix the name in Settings
+    return result
+
+
+def _airdrop_once(png_path, device):
     helper = config.helper_app()
     if not helper:
         return {"state": "failed", "error": "AirDrop helper not built (run scripts/build-app.sh)"}
