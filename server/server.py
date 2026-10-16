@@ -125,7 +125,7 @@ def airdrop(png_path, device):
             result = json.loads(status.read_text())
         except Exception:
             continue
-        if result.get("state") in ("clicked", "failed") or (result.get("state") == "panel" and not (device and result.get("trusted"))):
+        if result.get("state") in ("clicked", "failed", "notfound") or (result.get("state") == "panel" and not (device and result.get("trusted"))):
             break
     threading.Timer(90, lambda: status.unlink(missing_ok=True)).start()
     return result

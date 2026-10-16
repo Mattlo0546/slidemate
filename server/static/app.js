@@ -25,6 +25,7 @@ function toast(msg, err = false, ms = 3500) {
   t.textContent = msg;
   $('#toasts').append(t);
   setTimeout(() => t.remove(), ms);
+  return t;
 }
 
 // =====================================================================================
@@ -552,13 +553,15 @@ async function renderImage(n, { width = 2400, crop = null, type = 'image/png', q
 // =====================================================================================
 let cfg = {};
 async function sendToIpad(dataUrl, label) {
-  toast('Sending to iPad…', false, 1800);
+  // Finding the iPad can take several seconds, so keep this up until the server answers.
+  const pending = toast(cfg.airdrop ? 'Looking for your iPad…' : 'Sending to iPad…', false, 20000);
   try {
-    const r = await post('/api/send', { image: dataUrl, name: label });
+    const r = await post('/api/send', { image: dataUrl, name: label }).finally(() => pending.remove());
     const ad = r.airdrop;
     const clip = r.clipboard ? ' Also on your clipboard.' : '';
     if (!ad) toast('Copied.' + clip);
     else if (ad.state === 'clicked') toast(`AirDropping to ${ad.device} ✓` + clip);
+    else if (ad.state === 'notfound') toast(`Couldn't find "${ad.device}". Is it on and unlocked? The slide is saved.` + clip, true, 6000);
     else if (ad.state === 'failed') toast('AirDrop failed: ' + (ad.error || '') + clip, true, 6000);
     else if (ad.trusted === false) toast('Click your iPad in the AirDrop panel. (Enable auto-select in Settings.)' + clip, false, 6000);
     else toast(`AirDrop panel open. Couldn't spot "${cfg.ipad_name}" yet, click it when it appears.` + clip, false, 6000);
