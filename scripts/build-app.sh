@@ -91,7 +91,7 @@ PY_SHA_aarch64=16a5332fb0dcb77f163fc8f8cbccd95be1644cc53e68e5d2a79f50afd6680a0e
 PY_SHA_x86_64=f507ae04eb7747cd97cb484e8c5d83936cbfc52d9b08a1f35c00b47c707b1ae1
 PY_CACHE="${SLIDEMATE_PYTHON_CACHE:-$HOME/Library/Caches/SlideMate}/python-$PY_VERSION-$PY_BUILD-universal"
 if [ ! -x "$PY_CACHE/bin/python3" ]; then
-  echo "• Downloading Python $PY_VERSION…"
+  echo "• Downloading Python ${PY_VERSION}…"
   TMP=$(mktemp -d)
   for arch in aarch64 x86_64; do
     tgz="$TMP/$arch.tar.gz"
