@@ -1351,7 +1351,7 @@ function renderRecTools() {
     : t.installed ? ['Parakeet runs on this Mac, so audio never leaves your computer.', '✓ Ready', true, '']
     : t.state === 'running' ? [esc(t.step || 'Installing…') + ' You can keep studying while it downloads.', 'Installing…', false, '']
     : t.state === 'failed' ? [esc(t.error || 'The install failed.'), 'Not installed', false, 'Try again']
-    : ['SlideMate downloads it for you (about 1.4 GB, once).', 'Not installed', false, 'Install'];
+    : ['SlideMate downloads it for you (about 2 GB, once).', 'Not installed', false, 'Install'];
   $('#recStatus').innerHTML = text;
   $('#recBadge').textContent = badge;
   $('#recBadge').className = 'pill-status ' + (ok ? 'ok' : t.state === 'running' ? '' : 'bad');
