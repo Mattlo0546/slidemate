@@ -2,7 +2,7 @@
 
 It downloads uv (a single file; checksum pinned), and uv brings its own Python and installs:
   - "parakeet":   speech-to-text for lecture recording (parakeet-mlx, Apple Silicon only), plus a self-contained
-                  ffmpeg (from imageio-ffmpeg) and the speech model (~1.2 GB, downloaded once)
+                  ffmpeg (from imageio-ffmpeg) and the speech model (~2.3 GB, downloaded once)
   - "moodle":     the Moodle connection (github.com/Mattlo0546/moodle-mcp)
   - "blackboard": the Blackboard connection (github.com/Mattlo0546/blackboard-mcp)
 Everything lives in <SlideMate data>/tools, whose bin/ folder is first on SlideMate's PATH (config.EXTRA_PATH).
@@ -37,7 +37,7 @@ PACKAGES = {
                    "exe": "blackboard-mcp", "label": "the Blackboard connection"},
 }
 SPEECH_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"  # parakeet-mlx's default
-MIN_FREE_GB = 5  # don't start the automatic speech download on a nearly full disk
+MIN_FREE_GB = 6  # don't start the automatic speech download on a nearly full disk
 
 _jobs = {}  # name -> {"state": running|done|failed, "step": …, "error": …}
 _lock = threading.Lock()
@@ -170,7 +170,7 @@ def _download_model(step):
         while p.poll() is None:
             # Hugging Face writes the file only when it's complete, so show the time it's been going.
             secs = int(time.time() - t0)
-            step(f"Downloading the speech model (about 1.2 GB, once)… {secs // 60}:{secs % 60:02d}")
+            step(f"Downloading the speech model (about 2.3 GB, once)… {secs // 60}:{secs % 60:02d}")
             time.sleep(1)
         if p.returncode or not model_ready():
             raise RuntimeError("Couldn't download the speech model. " + (p.stderr.read() or "").strip()[-300:])

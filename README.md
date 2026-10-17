@@ -150,7 +150,7 @@ version is out, so later updates open without the prompt. Choose SlideMate → *
 You'll also need:
 - **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
   setup screen installs and signs in to any of them with one click (see the table below).
-- **Lecture recording** needs an Apple Silicon Mac. SlideMate downloads speech-to-text (Parakeet, about 2 GB) by itself
+- **Lecture recording** needs an Apple Silicon Mac. SlideMate downloads speech-to-text (Parakeet, about 3 GB) by itself
   after setup.
 - **Optional:** `brew install poppler` for slide text with every provider except Claude.
 
