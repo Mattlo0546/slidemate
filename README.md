@@ -45,7 +45,8 @@ copied to your clipboard, ready for GoodNotes or Notability.
 <td width="50%" valign="top">
 
 ### 🎙️ Lecture → notes for every slide
-Hit **Record** in class. SlideMate transcribes on-device with NVIDIA Parakeet, tracks which slide you were on, and writes
+Hit **Record** in class. SlideMate transcribes on-device with NVIDIA Parakeet (downloaded for you after setup on Apple
+Silicon Macs), tracks which slide you were on, and writes
 a summary (key ideas, to-dos, deadlines, exam tips) plus **notes for each slide with the lecturer's exact words**.
 
 </td>
@@ -90,9 +91,9 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
-- **MCP connections**: plug in your school's Blackboard, Canvas or
-  [Google Classroom](https://github.com/Mattlo0546/classroom-mcp) MCP server, and the tutor can check deadlines and
-  announcements mid-answer. A **Pull** button syncs new slides automatically.
+- **Your university, built in**: connect Moodle or Blackboard with just its address (Settings → Your university). A
+  **Pull** button brings in new slides, and the tutor can check deadlines and announcements mid-answer. Other MCP
+  servers (Canvas, [Google Classroom](https://github.com/Mattlo0546/classroom-mcp)…) go under Advanced.
 - **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
 - **Updates itself**: when a new release is out, SlideMate offers to install it and relaunch (or SlideMate → Check for
   Updates…).
@@ -149,8 +150,9 @@ version is out, so later updates open without the prompt. Choose SlideMate → *
 You'll also need:
 - **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
   setup screen installs and signs in to any of them with one click (see the table below).
-- **Optional:** `brew install poppler ffmpeg` and `uv tool install parakeet-mlx` for slide text (every provider except Claude
-  reads it) and lecture recording. The setup screen tells you if anything is missing.
+- **Lecture recording** needs an Apple Silicon Mac. SlideMate downloads speech-to-text (Parakeet, about 1.4 GB) by itself
+  after setup.
+- **Optional:** `brew install poppler` for slide text with every provider except Claude.
 
 ## Install from source
 
@@ -215,10 +217,18 @@ macOS has no silent AirDrop API, so SlideMate opens the AirDrop panel and clicks
 open Settings, enter your iPad's AirDrop name, click **Enable auto-select**, and turn on **SlideMate AirDrop** under
 System Settings → Privacy & Security → Accessibility. Without it, you click your iPad once in the panel.
 
-## MCP connections
+## Your university (Moodle and Blackboard)
 
+Settings → **Your university** (also step 3 of the welcome screen): enter your Moodle or Blackboard address and press
+**Connect**. SlideMate installs the connection ([moodle-mcp](https://github.com/Mattlo0546/moodle-mcp) or
+[blackboard-mcp](https://github.com/Mattlo0546/blackboard-mcp)) into its own folder with
+[uv](https://docs.astral.sh/uv/), opens the university sign-in window (SSO + MFA), then pulls this year's slides into
+your library, one folder per course. Later, the library's **Pull** button fetches only what's new, and the tutor can
+check deadlines and announcements. Nothing needs Terminal, Homebrew or Apple's Command Line Tools.
 
-Settings → **Connections (MCP)** → *Import from other AI apps…* (Claude, Codex, Cursor, Grok and Antigravity), or *Add server…* with a command and arguments
+## Other MCP connections
+
+Settings → Your university → **Advanced** → *Import from other AI apps…* (Claude, Codex, Cursor, Grok and Antigravity), or *Add server…* with a command and arguments
 (the same format as Claude Desktop's `mcpServers`).
 
 - **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
@@ -234,7 +244,7 @@ Settings → **Connections (MCP)** → *Import from other AI apps…* (Claude, C
 - **Pull**: if a server you add has a sync-style tool (e.g. `bb_sync`), SlideMate wires it to a **Pull from
   <Server>** button in the library automatically, with its sign-in tool (e.g. `bb_login`) used when the session
   has expired. Long syncs that run in the background are followed to the end by polling the matching
-  `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Sync.
+  `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Your university → Advanced.
 - **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
   are never sent to the UI.
 
@@ -282,6 +292,8 @@ starts the server and shows the UI.
 | Server, library, chats | `server/server.py`, `server/library.py` |
 | AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
 | MCP connections + client | `server/mcp.py` |
+| Your university (Moodle / Blackboard) | `server/university.py` |
+| Things SlideMate installs for itself (uv, Parakeet, ffmpeg) | `server/tools.py` |
 | Lecture recording → notes | `server/lecture.py` |
 | Flashcards + FSRS scheduling | `server/flashcards.py` |
 | UI | `server/static/` |

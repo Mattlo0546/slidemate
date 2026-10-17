@@ -476,6 +476,19 @@ body.first-run .pane[data-pane="ai"] .set-group:first-child .set-label b::before
 #btnSettingsSave:disabled { opacity: .45; cursor: default; }
 @media (min-width: 1000px) { body.first-run .pcards { grid-template-columns: repeat(3, 1fr); } }
 body.first-run #settings .pcard { padding: 10px 12px; }
+/* Your university: Moodle / Blackboard cards; "Advanced" (any MCP server) folded away */
+#uniCards .pcard { cursor: default; }
+#uniCards .uni-url { width: 100%; margin-top: 4px; }
+#uniCards .uni-step { font-size: 12px; color: var(--muted); }
+#uniCards .uni-err { font-size: 12px; color: #e5a50a; }
+details.advanced { margin-top: 14px; }
+details.advanced > summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 2px; }
+details.advanced[open] > summary { margin-bottom: 8px; }
+/* First run: the university is an optional third step; the advanced part stays out of the way */
+body.first-run .set-body .pane[data-pane="connections"] { display: block; }
+body.first-run #advConnections { display: none; }
+body.first-run #uniGroup .set-label b::before { content: "3 · "; color: var(--muted); }
+body.first-run #uniGroup .set-label b::after { content: " (optional)"; color: var(--muted); font-weight: normal; }
 body.first-run .set-head { padding-bottom: 0; }
 @media (max-width: 700px) { .set-nav { width: 64px; } .set-nav button { font-size: 0; justify-content: center; } .set-nav-title { display: none; } .pcards { grid-template-columns: 1fr; } }
 #settings .pcard code.cmd { font: 11px ui-monospace, Menlo, monospace; color: var(--text-2); background: var(--hover); padding: 4px 6px; border-radius: 6px; user-select: all; }

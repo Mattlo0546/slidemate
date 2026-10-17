@@ -20,7 +20,8 @@ for d in (DATA, WORK, CHATS, LECTURES, CHAT_IMAGES):
 
 # Tools are looked up on a PATH that includes the usual install locations, because apps
 # launched from Finder don't inherit your shell's PATH.
-EXTRA_PATH = [str(HOME / ".local/bin"), str(HOME / ".grok/bin"), "/opt/homebrew/bin", "/usr/local/bin", str(HOME / ".npm-global/bin"),
+TOOLS = DATA / "tools"  # what SlideMate installs for itself (server/tools.py): Parakeet, ffmpeg, university connections
+EXTRA_PATH = [str(TOOLS / "bin"), str(HOME / ".local/bin"), str(HOME / ".grok/bin"), "/opt/homebrew/bin", "/usr/local/bin", str(HOME / ".npm-global/bin"),
               str(HOME / ".bun/bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 ENV = {**os.environ, "PATH": ":".join(EXTRA_PATH + os.environ.get("PATH", "").split(":"))}
 

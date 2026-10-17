@@ -222,7 +222,7 @@
       <button type="button" data-pane="ipad"><svg><use href="#i-send"/></svg>Send to iPad</button>
       <button type="button" data-pane="recording"><svg><use href="#i-mic"/></svg>Lecture recording</button>
       <button type="button" data-pane="cards"><svg><use href="#i-cards"/></svg>Flashcards</button>
-      <button type="button" data-pane="connections"><svg><use href="#i-refresh"/></svg>Connections &amp; sync</button>
+      <button type="button" data-pane="connections"><svg><use href="#i-refresh"/></svg>Your university</button>
       <button type="button" data-pane="storage"><svg><use href="#i-inbox"/></svg>Storage</button>
     </nav>
     <div class="set-main">
@@ -294,7 +294,7 @@
           <div class="set-group">
             <div class="set-row">
               <div class="set-label"><b>Speech-to-text</b><span id="recStatus"></span></div>
-              <span id="recBadge" class="pill-status"></span>
+              <div class="set-actions"><span id="recBadge" class="pill-status"></span><button type="button" class="small" id="btnRecInstall" hidden>Install</button></div>
             </div>
             <div class="set-row">
               <div class="set-label"><b>How it works</b><span>Press Record in class. SlideMate transcribes on this Mac with NVIDIA Parakeet, notes which slide you were on, then writes a summary and per-slide notes with the lecturer's exact words.</span></div>
@@ -338,9 +338,17 @@
         </section>
 
         <section class="pane" data-pane="connections">
+          <div class="set-group" id="uniGroup">
+            <div class="set-row col">
+              <div class="set-label"><b>Your university</b><span>Connect your university's Moodle or Blackboard. New slides arrive with the library's Pull button, and the tutor can check your deadlines and announcements.</span></div>
+              <div id="uniCards" class="pcards"></div>
+            </div>
+          </div>
+          <details class="advanced" id="advConnections">
+          <summary>Advanced: other connections (MCP)</summary>
           <div class="set-group">
             <div class="set-row col">
-              <div class="set-label"><b>MCP servers</b><span>Connect tools like your university's Blackboard or Canvas. The tutor can check deadlines and announcements, and a sync tool becomes a Pull button.</span></div>
+              <div class="set-label"><b>MCP servers</b><span>Any MCP server, for tools beyond Moodle and Blackboard. The tutor can use their tools, and a sync tool can be the Pull button.</span></div>
               <div id="mcpList"></div>
               <div class="set-actions">
                 <button type="button" class="small" id="btnMcpImport">Import from other AI apps…</button>
@@ -371,6 +379,7 @@
               <label class="set-row"><div class="set-label"><b>Sign-in command</b><span>Run when the sync command exits with code 2.</span></div><input id="setSyncLogin" class="set-input mono" placeholder="optional"></label>
             </div>
           </div>
+          </details>
         </section>
 
         <section class="pane" data-pane="storage">

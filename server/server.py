@@ -25,6 +25,8 @@ import lecture
 import library as lib
 import mcp
 import providers
+import tools
+import university
 
 # ------------------------------------------------------------------ tutor sessions
 
@@ -288,6 +290,10 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/usage":
                 u_ = USAGE.get(arg("path")) or {}
                 return self._json({**u_, "limits": providers.LIMITS.get(config.load()["provider"], u_.get("limits", []))})
+            if u.path == "/api/tools":
+                return self._json(tools.status())
+            if u.path == "/api/university":
+                return self._json(university.status())
             if u.path == "/api/status":
                 only = (urllib.parse.parse_qs(u.query).get("only") or [""])[0]
                 return self._json(status([n for n in only.split(",") if n]))
@@ -406,7 +412,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if p == "/api/config":
             config.update(body)
+            if body.get("setup_done"):
+                threading.Thread(target=tools.auto, daemon=True).start()  # get lecture recording ready
             return self._json(config.public())
+        if p == "/api/tools/install":
+            return self._json(tools.install(body.get("name", "")) if body.get("name") in tools.PACKAGES else {"error": "unknown"})
+        if p == "/api/university/connect":
+            return self._json(university.connect(body.get("kind", ""), body.get("url", "")))
+        if p == "/api/university/disconnect":
+            return self._json(university.disconnect(body.get("kind", "")))
         if p == "/api/mcp/import":  # copies specs (incl. env) server-side, so secrets never touch the browser
             found = mcp.discover()
             for n in body.get("names", []):
@@ -663,6 +677,7 @@ def main():
     lecture.ON_NOTES_DONE.append(flashcards.on_notes_done)
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
     threading.Timer(20, flashcards.catch_up).start()  # and flashcards that weren't made because the app quit
+    threading.Timer(15, tools.auto).start()  # and lecture recording, if setup finished but it isn't installed yet
     threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
     try:
         mcp.repair_sync()  # a Pull set to a tool that can't sync (e.g. picked by accident) → one that can

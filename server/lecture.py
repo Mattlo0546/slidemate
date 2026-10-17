@@ -28,7 +28,7 @@ def FFMPEG():
 def tools_status():
     """Recording needs ffmpeg + parakeet-mlx (Apple Silicon). Importing transcripts needs neither."""
     return {"ffmpeg": bool(config.which("ffmpeg")), "parakeet": bool(config.which("parakeet-mlx")),
-            "install": "brew install ffmpeg uv && uv tool install parakeet-mlx"}
+            "install": "Settings → Lecture recording → Install"}
 
 
 def audio_path(lid):
@@ -153,7 +153,7 @@ def _transcribe(audio, offset, start_at):
     try:
         parakeet = config.which("parakeet-mlx")
         if not parakeet:
-            raise RuntimeError("Transcription needs parakeet-mlx: " + tools_status()["install"])
+            raise RuntimeError("Speech-to-text isn't installed yet: " + tools_status()["install"])
         # Decode to 16 kHz mono WAV, split into pieces in the same pass. Parakeet holds a whole file in memory
         # (a 95-minute lecture took ~5 GB and crawled on a busy 16 GB Mac); 15-minute pieces stay well under 1 GB.
         cmd = [FFMPEG(), "-loglevel", "error", "-y"]

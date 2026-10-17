@@ -1275,7 +1275,7 @@ function readModelFields() {
   if ($('#setClaudeModel')) { draft.claude_model = $('#setClaudeModel').value; draft.claude_notes_model = $('#setClaudeNotes').value; }
 }
 async function loadStatus() { sysStatus = await (await api('/api/status')).json(); }
-const PANE_TITLES = { general: 'Library', ai: 'AI tutor', ipad: 'Send to iPad', recording: 'Lecture recording', cards: 'Flashcards', connections: 'Connections & sync', storage: 'Storage' };
+const PANE_TITLES = { general: 'Library', ai: 'AI tutor', ipad: 'Send to iPad', recording: 'Lecture recording', cards: 'Flashcards', connections: 'Your university', storage: 'Storage' };
 function showPane(name) {
   if (!PANE_TITLES[name]) name = 'general';
   document.querySelectorAll('#settings .pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
@@ -1309,13 +1309,9 @@ async function openSettings(firstRun = false, pane) {
   $('#setMd').checked = cfg.write_markdown;
   $('#providerCards').innerHTML = '<div class="set-label"><span>Checking which AI apps are installed…</span></div>';
   if (!$('#settings').open) $('#settings').showModal();
+  loadSetup();  // university cards + speech-to-text status (quick), while the AI apps are checked (slower)
   await loadStatus();
   renderProviders();
-  const r = sysStatus.recording, ready = r.ffmpeg && r.parakeet;
-  $('#recStatus').innerHTML = ready ? 'Parakeet runs on this Mac, so audio never leaves your computer.'
-    : `Needs ffmpeg and Parakeet: <code>${esc(r.install)}</code>. Importing a transcript works without them.`;
-  $('#recBadge').textContent = ready ? '✓ Ready' : 'Not installed';
-  $('#recBadge').className = 'pill-status ' + (ready ? 'ok' : 'bad');
   renderRecList();
   const p = lib.paths || {};
   const rows = [['Your slides', (p.roots || []).join(', ')], ['Inbox', p.inbox, 'Drop PDFs here and they get filed into the right course.'],
@@ -1325,6 +1321,94 @@ async function openSettings(firstRun = false, pane) {
     <button type="button" class="small" data-reveal="${esc(path.split(', ')[0])}">Show in Finder</button></div>`).join('');
   refreshTrust();
 }
+// ---------- Things SlideMate installs for itself: speech-to-text, and your university's Moodle / Blackboard ----------
+let toolsSt = {}, uniSt = {}, setupPoll = null;
+async function loadSetup() {
+  try {
+    [toolsSt, uniSt] = await Promise.all([(await api('/api/tools')).json(), (await api('/api/university')).json()]);
+  } catch { return; }
+  renderRecTools();
+  renderUni();
+  const busy = [...Object.values(toolsSt), ...Object.values(uniSt)].some((j) => j.state === 'running');
+  clearTimeout(setupPoll);
+  if (busy && $('#settings').open) setupPoll = setTimeout(loadSetup, 1500);
+}
+// A connection can finish after Settings has closed (e.g. right after Get started): when it does, show its Pull.
+async function watchUni() {
+  let st;
+  try { st = await (await api('/api/university')).json(); } catch { return; }
+  const running = Object.values(st).some((j) => j.state === 'running');
+  if (running) return setTimeout(watchUni, 2000);
+  const failed = Object.values(st).find((j) => j.state === 'failed');
+  if (failed) toast(`${failed.label}: ${failed.error}`, true, 10000);
+  cfg = await (await api('/api/config')).json();
+  loadLibrary();
+  schedulePoll();
+}
+function renderRecTools() {
+  const t = toolsSt.parakeet || {};
+  const [text, badge, ok, btn] = !t.supported ? ['Recording needs a Mac with Apple Silicon (M1 or later). Importing a transcript works on any Mac.', 'Not available', false, '']
+    : t.installed ? ['Parakeet runs on this Mac, so audio never leaves your computer.', '✓ Ready', true, '']
+    : t.state === 'running' ? [esc(t.step || 'Installing…') + ' You can keep studying while it downloads.', 'Installing…', false, '']
+    : t.state === 'failed' ? [esc(t.error || 'The install failed.'), 'Not installed', false, 'Try again']
+    : ['SlideMate downloads it for you (about 1.4 GB, once).', 'Not installed', false, 'Install'];
+  $('#recStatus').innerHTML = text;
+  $('#recBadge').textContent = badge;
+  $('#recBadge').className = 'pill-status ' + (ok ? 'ok' : t.state === 'running' ? '' : 'bad');
+  $('#btnRecInstall').hidden = !btn;
+  $('#btnRecInstall').textContent = btn;
+}
+$('#btnRecInstall').onclick = async () => { await post('/api/tools/install', { name: 'parakeet' }); loadSetup(); };
+const UNI = {
+  moodle: { name: 'Moodle', sub: "If your university's site is Moodle (LSE's is).", example: 'moodle.lse.ac.uk' },
+  blackboard: { name: 'Blackboard', sub: "If your university's site is Blackboard Learn (Bristol's is).", example: 'www.ole.bris.ac.uk' },
+};
+function renderUni() {
+  const firstRun = document.body.classList.contains('first-run');
+  $('#uniCards').innerHTML = Object.entries(UNI).map(([kind, u]) => {
+    const st = uniSt[kind] || {}, host = (st.url || '').replace(/^https?:\/\//, '');
+    const picked = firstRun && draft.university?.kind === kind;
+    const input = `<input class="set-input uni-url" data-uni-url="${kind}" placeholder="Address, e.g. ${u.example}" value="${esc(picked ? draft.university.url : host)}" spellcheck="false" autocapitalize="off">`;
+    const body = st.state === 'running' ? `<span class="pill-status"><span class="spinner"></span>Connecting…</span><div class="uni-step">${esc(st.step || '')}</div>`
+      : st.connected && !firstRun ? `<span class="pill-status ok">✓ Connected${host ? ' · ' + esc(host) : ''}${st.own_setup ? ' (your own setup)' : ''}</span>
+          <div class="acts"><button type="button" class="small" data-uni-pull="${kind}">Pull new slides</button><button type="button" class="small ghost" data-uni-off="${kind}">Disconnect</button></div>`
+      : firstRun ? `${input}<div class="acts"><button type="button" class="small ${picked ? 'primary' : ''}" data-uni-pick="${kind}">${picked ? '✓ Connects after Get started' : 'Use ' + u.name}</button></div>`
+      : `${st.state === 'failed' ? `<div class="uni-err">${esc(st.error || '')}</div>` : ''}${input}
+          <div class="acts"><button type="button" class="small primary" data-uni-go="${kind}">${st.state === 'failed' ? 'Try again' : 'Connect'}</button></div>`;
+    return `<div class="pcard"><div class="body"><b>${u.name}</b><div class="st">${u.sub}</div></div>${body}</div>`;
+  }).join('');
+}
+$('#uniCards').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  e.preventDefault();
+  const kind = b.dataset.uniGo || b.dataset.uniPick || b.dataset.uniPull || b.dataset.uniOff;
+  const url = $(`[data-uni-url="${kind}"]`)?.value.trim() || '';
+  if (b.dataset.uniPick) {
+    if (!url) return toast(`Enter your ${UNI[kind].name} address first`, true);
+    draft.university = draft.university?.kind === kind ? null : { kind, url };
+    return renderUni();
+  }
+  if (b.dataset.uniPull) { $('#settings').close(); return startSync(false); }
+  if (b.dataset.uniOff) {
+    if (!confirm(`Disconnect ${UNI[kind].name}? Slides you already have stay where they are.`)) return;
+    uniSt = await post('/api/university/disconnect', { kind });
+    cfg = await (await api('/api/config')).json();
+    renderMcp(); renderSyncMode(); renderUni(); loadLibrary();
+    return;
+  }
+  if (!url) return toast(`Enter your ${UNI[kind].name} address, e.g. ${UNI[kind].example}`, true);
+  const r = await post('/api/university/connect', { kind, url });
+  if (r.error) return toast(r.error, true);
+  toast(`Connecting ${UNI[kind].name}. A window opens for you to sign in.`, false, 7000);
+  loadSetup();
+  watchUni();
+});
+$('#uniCards').addEventListener('input', (e) => {
+  const kind = e.target.dataset?.uniUrl;
+  if (kind && draft.university?.kind === kind) draft.university.url = e.target.value.trim();
+});
+
 // ---------- Settings → Lecture recording → Your recordings ----------
 const REC_STATUS = { recording: 'Recording now', transcribing: 'Transcribing…', writing: 'Writing notes…', error: 'Failed' };
 async function renderRecList() {
@@ -1594,7 +1678,7 @@ async function saveSettings(now = false) {
   if (now) return go();
   saveT = setTimeout(go, 400);
 }
-$('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp')) saveSettings(); });
+$('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp, #uniCards')) saveSettings(); });
 $('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit, #setCardsNew')) saveSettings(); });
 $('#btnSettingsClose').onclick = () => $('#settings').close();
 $('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
@@ -1607,6 +1691,12 @@ $('#btnSettingsSave').onclick = async () => {  // first run: "Get started"
   document.body.classList.remove('first-run');
   $('#settings').close();
   toast('All set. Your courses are being organised.');
+  const uni = draft.university;
+  if (uni?.url) {  // step 3: connect the university now that the library folder is saved
+    const r = await post('/api/university/connect', uni);
+    if (r.error) toast(r.error, true, 8000);
+    else { toast(`Connecting ${UNI[uni.kind].name}: sign in in the window that opens, and your slides will start arriving.`, false, 10000); watchUni(); }
+  }
   loadModels();
   loadLibrary();
   if (state.pdf) setCurrent(state.current);
@@ -1732,6 +1822,15 @@ function audioTime() { return rec ? rec.acc + (rec.paused ? 0 : (performance.now
 
 async function startRecording() {
   if (!state.pdf) return toast('Open the lecture slides first');
+  try {
+    const t = (await (await api('/api/tools')).json()).parakeet || {};
+    if (!t.installed) {
+      const why = !t.supported ? "Speech-to-text needs a Mac with Apple Silicon, so this recording can't be turned into notes on this Mac."
+        : t.state === 'running' ? `Speech-to-text is still downloading (${t.step || 'installing'}).`
+        : "Speech-to-text isn't installed yet (Settings → Lecture recording).";
+      if (!confirm(`${why}\n\nRecord anyway? The audio is saved, and you can press "Try again" on the lecture to write notes once it's ready.`)) return;
+    }
+  } catch { /* record anyway */ }
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } });
