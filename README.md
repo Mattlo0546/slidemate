@@ -91,9 +91,10 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
-- **Your university, built in**: connect Moodle or Blackboard with just its address (Settings → Your university). A
-  **Pull** button brings in new slides, and the tutor can check deadlines and announcements mid-answer. Other MCP
-  servers (Canvas, [Google Classroom](https://github.com/Mattlo0546/classroom-mcp)…) go under Advanced.
+- **Your university, built in**: search for your university (Oxford, UCL, King's, LSE, Imperial, Cambridge and 30
+  more) and connect it in one click, or pick Canvas, Moodle, Blackboard or Google Classroom from the connector
+  directory (Settings → Your university). A **Pull** button brings in new slides, and the tutor can check deadlines
+  and announcements mid-answer. Any other MCP server goes under Advanced.
 - **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
 - **Updates itself**: when a new release is out, SlideMate offers to install it and relaunch (or SlideMate → Check for
   Updates…).
@@ -217,14 +218,24 @@ macOS has no silent AirDrop API, so SlideMate opens the AirDrop panel and clicks
 open Settings, enter your iPad's AirDrop name, click **Enable auto-select**, and turn on **SlideMate AirDrop** under
 System Settings → Privacy & Security → Accessibility. Without it, you click your iPad once in the panel.
 
-## Your university (Moodle and Blackboard)
+## Your university (Canvas, Moodle, Blackboard, Google Classroom)
 
-Settings → **Your university** (also step 3 of the welcome screen): enter your Moodle or Blackboard address and press
-**Connect**. SlideMate installs the connection ([moodle-mcp](https://github.com/Mattlo0546/moodle-mcp) or
-[blackboard-mcp](https://github.com/Mattlo0546/blackboard-mcp)) into its own folder with
+Settings → **Your university** (also step 3 of the welcome screen): search for your university and press **Connect**,
+or open a connector, enter your site's address and press **Connect**:
+
+| Connector | For | Open-source MCP server |
+| --- | --- | --- |
+| Canvas | Oxford, Birmingham, Liverpool, Harvard, Stanford, MIT… | [canvas-mcp](https://github.com/Mattlo0546/canvas-mcp) |
+| Moodle | UCL, King's (KEATS), LSE, Cambridge, Warwick, QMUL… | [moodle-mcp](https://github.com/Mattlo0546/moodle-mcp) |
+| Blackboard | Imperial, Edinburgh, Bristol, Leeds, Sheffield… | [blackboard-mcp](https://github.com/Mattlo0546/blackboard-mcp) |
+| Google Classroom | Schools on Google Classroom (needs your own Google client file, once) | [classroom-mcp](https://github.com/Mattlo0546/classroom-mcp) |
+
+SlideMate installs the connection into its own folder with
 [uv](https://docs.astral.sh/uv/), opens the university sign-in window (SSO + MFA), then pulls this year's slides into
 your library, one folder per course. Later, the library's **Pull** button fetches only what's new, and the tutor can
-check deadlines and announcements. Nothing needs Terminal, Homebrew or Apple's Command Line Tools.
+check deadlines and announcements. Nothing needs Terminal, Homebrew or Apple's Command Line Tools. Each connector shows
+what it can do (everything is read-only) and has two switches: whether the tutor may use it, and whether it's the Pull
+button.
 
 ## Other MCP connections
 
@@ -247,10 +258,6 @@ Settings → Your university → **Advanced** → *Import from other AI apps…*
   `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Your university → Advanced.
 - **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
   are never sent to the UI.
-
-**Google Classroom:** use [classroom-mcp](https://github.com/Mattlo0546/classroom-mcp) (one Python file, no dependencies).
-It adds a **Pull from Google Classroom** button that downloads class slides as PDFs, one folder per course, and lets
-the tutor see upcoming assignments and announcements.
 
 ## FAQ
 
@@ -292,7 +299,7 @@ starts the server and shows the UI.
 | Server, library, chats | `server/server.py`, `server/library.py` |
 | AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
 | MCP connections + client | `server/mcp.py` |
-| Your university (Moodle / Blackboard) | `server/university.py` |
+| Your university (Canvas / Moodle / Blackboard / Google Classroom) | `server/university.py`, logos in `server/static/logos/` |
 | Things SlideMate installs for itself (uv, Parakeet, ffmpeg) | `server/tools.py` |
 | Lecture recording → notes | `server/lecture.py` |
 | Flashcards + FSRS scheduling | `server/flashcards.py` |

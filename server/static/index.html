@@ -344,15 +344,25 @@
         <section class="pane" data-pane="connections">
           <div class="set-group" id="uniGroup">
             <div class="set-row col">
-              <div class="set-label"><b>Your university</b><span>Connect your university's Moodle or Blackboard. New slides arrive with the library's Pull button, and the tutor can check your deadlines and announcements.</span></div>
-              <div id="uniCards" class="pcards"></div>
+              <div class="set-label"><b>Find your university</b><span>Connect it in one click: SlideMate installs the connection, opens your university's sign-in, and pulls your slides. Then the library's Pull button gets new ones, and the tutor can check your deadlines and announcements.</span></div>
+              <div class="uni-find">
+                <input id="uniSearch" class="set-input" placeholder="Search, e.g. Oxford, UCL, King's" autocomplete="off" spellcheck="false" autocapitalize="off">
+                <div id="uniResults" class="uni-results"></div>
+              </div>
             </div>
           </div>
+          <div class="set-group">
+            <div class="set-row col">
+              <div class="set-label"><b>Connectors</b><span>Or choose your learning platform. Each one is read-only, runs on your Mac, and is open source on GitHub.</span></div>
+              <div id="uniCards"></div>
+            </div>
+          </div>
+          <input type="file" id="gcSecretFile" accept=".json,application/json" hidden>
           <details class="advanced" id="advConnections">
           <summary>Advanced: other connections (MCP)</summary>
           <div class="set-group">
             <div class="set-row col">
-              <div class="set-label"><b>MCP servers</b><span>Any MCP server, for tools beyond Moodle and Blackboard. The tutor can use their tools, and a sync tool can be the Pull button.</span></div>
+              <div class="set-label"><b>MCP servers</b><span>Any MCP server, for tools beyond the connectors above. The tutor can use their tools, and a sync tool can be the Pull button.</span></div>
               <div id="mcpList"></div>
               <div class="set-actions">
                 <button type="button" class="small" id="btnMcpImport">Import from other AI apps…</button>

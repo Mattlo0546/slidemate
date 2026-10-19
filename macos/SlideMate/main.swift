@@ -239,17 +239,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         decisionHandler(.allow)
     }
 
-    // <input type="file"> does nothing in WKWebView unless the app shows the panel. The only one is
-    // "attach pictures" in the chat, so the panel offers images.
+    // <input type="file"> does nothing in WKWebView unless the app shows the panel. WebKit doesn't pass on the
+    // input's `accept`, so the page sets window.__openPanel = "json" before opening the Google Classroom client
+    // file; anything else is "attach pictures" in the chat.
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.image]
-        panel.message = "Choose pictures to ask about, e.g. photos of your handwritten notes"
-        guard let w = webView.window else { return completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
-        panel.beginSheetModal(for: w) { r in completionHandler(r == .OK ? panel.urls : nil) }
+        webView.evaluateJavaScript("(() => { const k = window.__openPanel || ''; window.__openPanel = ''; return k })()") { kind, _ in
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+            panel.canChooseDirectories = false
+            if (kind as? String) == "json" {
+                panel.allowedContentTypes = [.json]
+                panel.message = "Choose the client file you downloaded from Google Cloud (client_secret_….json)"
+                panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            } else {
+                panel.allowedContentTypes = [.image]
+                panel.message = "Choose pictures to ask about, e.g. photos of your handwritten notes"
+            }
+            guard let w = webView.window else { return completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
+            panel.beginSheetModal(for: w) { r in completionHandler(r == .OK ? panel.urls : nil) }
+        }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

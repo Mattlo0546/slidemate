@@ -23,7 +23,7 @@ Features:
 - Lecture notes: record in class; summary (key ideas, to-dos, deadlines, exam tips) plus per-slide notes with verbatim quotes and audio playback; or import Otter/Granola transcripts.
 - Flashcards: active-recall cards written per lecture and split by subtopic, from the slides, the lecturer's exam hints and the questions the student asked the tutor; spaced repetition with FSRS (the scheduler Anki uses); exports to Anki.
 - Viewer: ⌘F search across all slides, selectable text, pinch to zoom, chats saved per slide (also as Markdown for Obsidian).
-- Library: sorts course folders by course, type (lectures, labs, readings) and week; Blackboard/Canvas via MCP with a Pull button. Google Classroom via https://github.com/Mattlo0546/classroom-mcp.
+- Library: sorts course folders by course, type (lectures, labs, readings) and week; one-click university connectors (Canvas: https://github.com/Mattlo0546/canvas-mcp, Moodle: https://github.com/Mattlo0546/moodle-mcp, Blackboard: https://github.com/Mattlo0546/blackboard-mcp, Google Classroom: https://github.com/Mattlo0546/classroom-mcp) with a Pull button; search for your university (Oxford, UCL, King's, LSE, Imperial, Cambridge…).
 
 ## Links
 - [README](https://github.com/Mattlo0546/slidemate#readme)

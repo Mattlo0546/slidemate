@@ -421,6 +421,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(university.connect(body.get("kind", ""), body.get("url", "")))
         if p == "/api/university/disconnect":
             return self._json(university.disconnect(body.get("kind", "")))
+        if p == "/api/university/permissions":
+            return self._json(university.permissions(body.get("kind", ""), body.get("tutor"), body.get("pull")))
+        if p == "/api/university/classroom-secret":
+            return self._json(university.save_classroom_secret(body.get("text", "")))
         if p == "/api/mcp/import":  # copies specs (incl. env) server-side, so secrets never touch the browser
             found = mcp.discover()
             for n in body.get("names", []):

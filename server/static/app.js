@@ -1378,54 +1378,173 @@ function renderRecTools() {
   $('#btnRecInstall').textContent = btn;
 }
 $('#btnRecInstall').onclick = async () => { await post('/api/tools/install', { name: 'parakeet' }); loadSetup(); };
-const UNI = {
-  moodle: { name: 'Moodle', sub: "If your university's site is Moodle (LSE's is).", example: 'moodle.lse.ac.uk' },
-  blackboard: { name: 'Blackboard', sub: "If your university's site is Blackboard Learn (Bristol's is).", example: 'www.ole.bris.ac.uk' },
+// The connector directory: each is an open-source MCP server SlideMate installs itself (server/tools.py).
+const GH = 'https://github.com/Mattlo0546/';
+const CONNECTORS = {
+  canvas: { name: 'Canvas', by: 'Instructure', repo: 'canvas-mcp', example: 'canvas.ox.ac.uk', where: 'Oxford, Birmingham, Harvard, Stanford, MIT…',
+    about: 'For universities on Canvas LMS. Signs in through your university’s single sign-on, so you don’t need an access token.' },
+  moodle: { name: 'Moodle', by: 'Moodle', repo: 'moodle-mcp', example: 'moodle.ucl.ac.uk', where: 'UCL, King’s (KEATS), LSE, Cambridge, Warwick…',
+    about: 'For universities on Moodle. Uses Moodle’s official app API and signs in through your university’s single sign-on.' },
+  blackboard: { name: 'Blackboard', by: 'Anthology', repo: 'blackboard-mcp', example: 'bb.imperial.ac.uk', where: 'Imperial, Edinburgh, Bristol, Leeds…',
+    about: 'For universities on Blackboard Learn (Ultra). Uses Blackboard’s own API with your signed-in session.' },
+  classroom: { name: 'Google Classroom', by: 'Google', repo: 'classroom-mcp', where: 'Schools and colleges on Google Classroom',
+    about: 'For classes on Google Classroom. Google Slides and Docs are saved as PDFs. Google asks each person to create their own sign-in client, which takes about 10 minutes once.' },
 };
-function renderUni() {
-  const firstRun = document.body.classList.contains('first-run');
-  $('#uniCards').innerHTML = Object.entries(UNI).map(([kind, u]) => {
-    const st = uniSt[kind] || {}, host = (st.url || '').replace(/^https?:\/\//, '');
-    const picked = firstRun && draft.university?.kind === kind;
-    const input = `<input class="set-input uni-url" data-uni-url="${kind}" placeholder="Address, e.g. ${u.example}" value="${esc(picked ? draft.university.url : host)}" spellcheck="false" autocapitalize="off">`;
-    const body = st.state === 'running' ? `<span class="pill-status"><span class="spinner"></span>Connecting…</span><div class="uni-step">${esc(st.step || '')}</div>`
-      : st.connected && !firstRun ? `<span class="pill-status ok">✓ Connected${host ? ' · ' + esc(host) : ''}${st.own_setup ? ' (your own setup)' : ''}</span>
-          <div class="acts"><button type="button" class="small" data-uni-pull="${kind}">Pull new slides</button><button type="button" class="small ghost" data-uni-off="${kind}">Disconnect</button></div>`
-      : firstRun ? `${input}<div class="acts"><button type="button" class="small ${picked ? 'primary' : ''}" data-uni-pick="${kind}">${picked ? '✓ Connects after Get started' : 'Use ' + u.name}</button></div>`
-      : `${st.state === 'failed' ? `<div class="uni-err">${esc(st.error || '')}</div>` : ''}${input}
-          <div class="acts"><button type="button" class="small primary" data-uni-go="${kind}">${st.state === 'failed' ? 'Try again' : 'Connect'}</button></div>`;
-    return `<div class="pcard"><div class="body"><b>${u.name}</b><div class="st">${u.sub}</div></div>${body}</div>`;
-  }).join('');
+const CAN_DO = ['Read your courses and course materials', 'See upcoming deadlines and whether you’ve submitted',
+  'Read course announcements', 'Download lecture slides into your library'];
+// Checked to be on that platform (2026-10). Search matches the name and the extra words.
+const UNIS = [
+  ['University of Oxford', 'canvas', 'canvas.ox.ac.uk', 'oxon'], ['UCL (University College London)', 'moodle', 'moodle.ucl.ac.uk'],
+  ['King’s College London (KEATS)', 'moodle', 'keats.kcl.ac.uk', 'kcl kings'], ['LSE (London School of Economics)', 'moodle', 'moodle.lse.ac.uk'],
+  ['Imperial College London', 'blackboard', 'bb.imperial.ac.uk', 'icl'], ['University of Cambridge', 'moodle', 'www.vle.cam.ac.uk', 'cam'],
+  ['University of Edinburgh', 'blackboard', 'www.learn.ed.ac.uk'], ['University of Bristol', 'blackboard', 'www.ole.bris.ac.uk'],
+  ['University of Warwick', 'moodle', 'moodle.warwick.ac.uk'], ['Queen Mary University of London (QMplus)', 'moodle', 'qmplus.qmul.ac.uk', 'qmul'],
+  ['Royal Holloway, University of London', 'moodle', 'moodle.royalholloway.ac.uk', 'rhul'],
+  ['University of Birmingham', 'canvas', 'canvas.bham.ac.uk'], ['University of Liverpool', 'canvas', 'canvas.liverpool.ac.uk'],
+  ['University of Sussex', 'canvas', 'canvas.sussex.ac.uk'], ['University of Leeds (Minerva)', 'blackboard', 'minerva.leeds.ac.uk'],
+  ['University of Sheffield', 'blackboard', 'vle.shef.ac.uk'], ['University of Southampton', 'blackboard', 'blackboard.soton.ac.uk', 'soton'],
+  ['University of York (Yorkshare)', 'blackboard', 'vle.york.ac.uk'], ['University of Bath', 'moodle', 'moodle.bath.ac.uk'],
+  ['University of Nottingham', 'moodle', 'moodle.nottingham.ac.uk'], ['University of Glasgow', 'moodle', 'moodle.gla.ac.uk'],
+  ['University of Exeter', 'moodle', 'vle.exeter.ac.uk'], ['Loughborough University', 'moodle', 'learn.lboro.ac.uk', 'lboro'],
+  ['Harvard University', 'canvas', 'canvas.harvard.edu'], ['Stanford University', 'canvas', 'canvas.stanford.edu'],
+  ['MIT', 'canvas', 'canvas.mit.edu', 'massachusetts institute of technology'], ['UC Berkeley (bCourses)', 'canvas', 'bcourses.berkeley.edu', 'california'],
+  ['UC San Diego', 'canvas', 'canvas.ucsd.edu', 'california'], ['University of Michigan', 'canvas', 'umich.instructure.com'],
+  ['Columbia University (CourseWorks)', 'canvas', 'courseworks2.columbia.edu'], ['Carnegie Mellon University', 'canvas', 'canvas.cmu.edu', 'cmu'],
+  ['National University of Singapore', 'canvas', 'canvas.nus.edu.sg', 'nus'], ['University of Hong Kong', 'moodle', 'moodle.hku.hk', 'hku'],
+].map(([name, kind, host, alias = '']) => ({ name, kind, host, key: `${name} ${alias} ${host}`.toLowerCase().replace(/[’'()]/g, '') }));
+const POPULAR = ['canvas.ox.ac.uk', 'moodle.ucl.ac.uk', 'keats.kcl.ac.uk', 'moodle.lse.ac.uk', 'bb.imperial.ac.uk', 'www.vle.cam.ac.uk'];
+let uniOpen = null;           // the connector whose details are showing
+const uniAddr = {};           // address typed or picked per connector, before connecting
+const logo = (kind, cls = '') => `<img class="clogo ${cls}" src="logos/${kind}.svg" alt="">`;
+
+function uniBadge(kind) {
+  const st = uniSt[kind] || {}, picked = document.body.classList.contains('first-run') && draft.university?.kind === kind;
+  return st.state === 'running' ? '<span class="pill-status"><span class="spinner"></span>Connecting…</span>'
+    : st.connected ? '<span class="pill-status ok">✓ Connected</span>'
+    : picked ? '<span class="pill-status ok">✓ After Get started</span>'
+    : st.state === 'failed' ? '<span class="pill-status bad">Didn’t finish</span>' : '';
 }
+function renderUniSearch() {
+  const q = $('#uniSearch').value.trim().toLowerCase().replace(/[’'()]/g, '');
+  const hits = q ? UNIS.filter((u) => q.split(/\s+/).every((w) => u.key.includes(w))).slice(0, 6) : UNIS.filter((u) => POPULAR.includes(u.host));
+  const connected = (u) => uniSt[u.kind]?.connected && (uniSt[u.kind].url || '').replace(/^https?:\/\//, '') === u.host;
+  $('#uniResults').innerHTML = hits.length ? hits.map((u) => `<button type="button" class="uni-hit" data-uni-host="${esc(u.host)}">
+      ${logo(u.kind, 'sm')}<span class="body"><b>${esc(u.name)}</b><span>${CONNECTORS[u.kind].name} · ${esc(u.host)}</span></span>
+      <span class="go">${connected(u) ? '✓ Connected' : 'Connect'}</span></button>`).join('')
+    : `<div class="hint">Not listed? Choose your platform below and enter the address you use to open it (it works with any university).</div>`;
+}
+function renderUni() {
+  renderUniSearch();
+  const el = $('#uniCards');
+  if (!uniOpen) {
+    el.innerHTML = `<div class="cgrid">${Object.entries(CONNECTORS).map(([kind, c]) => `<button type="button" class="ccard" data-uni-open="${kind}">
+        ${logo(kind)}<span class="body"><b>${c.name}</b><span>${esc(c.where)}</span></span>${uniBadge(kind)}</button>`).join('')}</div>`;
+    return;
+  }
+  const kind = uniOpen, c = CONNECTORS[kind], st = uniSt[kind] || {}, firstRun = document.body.classList.contains('first-run');
+  const host = (st.url || '').replace(/^https?:\/\//, '');
+  const picked = firstRun && draft.university?.kind === kind;
+  let body;
+  if (st.state === 'running') {
+    body = `<div class="cstep"><span class="spinner"></span>${esc(st.step || 'Connecting…')}</div>`;
+  } else if (st.connected && !firstRun) {
+    const tools = st.tools || [];
+    body = `<div class="cperm">
+        <label class="set-row"><div class="set-label"><b>The tutor can use it</b><span>While answering, the tutor can look up your deadlines, announcements and course pages.</span></div>
+          <input type="checkbox" class="switch" data-uni-tutor="${kind}" ${st.tutor !== false ? 'checked' : ''}></label>
+        <label class="set-row"><div class="set-label"><b>Pull button</b><span>The library’s Pull button downloads new slides from ${c.name}.</span></div>
+          <input type="checkbox" class="switch" data-uni-pullset="${kind}" ${st.pull ? 'checked' : ''}></label>
+      </div>
+      ${tools.length ? `<details class="ctools"><summary>${tools.length} tools it gives SlideMate</summary><div>${tools.map((t) => `<code>${esc(t)}</code>`).join(' ')}</div></details>` : ''}
+      <div class="acts"><button type="button" class="small" data-uni-pull="${kind}">Pull new slides</button><button type="button" class="small ghost" data-uni-off="${kind}">Disconnect</button></div>`;
+  } else {
+    const val = picked ? draft.university.url : uniAddr[kind] ?? host;
+    const addr = c.example ? `<label class="field">Your ${c.name} address<input class="set-input uni-url" data-uni-url="${kind}" placeholder="e.g. ${c.example}" value="${esc(val || '')}" spellcheck="false" autocapitalize="off"></label>` : '';
+    const gc = kind === 'classroom' ? `<ol class="csteps">
+        <li>Create your Google sign-in client: <a href="${GH}classroom-mcp#google-setup-about-10-minutes-once">follow these steps</a> (about 10 minutes, once).</li>
+        <li><button type="button" class="small" id="btnGcSecret">${st.has_secret ? '✓ Client file chosen. Choose another…' : 'Choose client file…'}</button></li></ol>` : '';
+    const go = firstRun ? `<button type="button" class="small ${picked ? '' : 'primary'}" data-uni-pick="${kind}">${picked ? 'Don’t connect' : 'Connect after Get started'}</button>`
+      : `<button type="button" class="small primary" data-uni-go="${kind}">${st.state === 'failed' ? 'Try again' : 'Connect'}</button>`;
+    body = `${st.state === 'failed' ? `<div class="uni-err">${esc(st.error || '')}</div>` : ''}${gc}${addr}<div class="acts">${go}</div>`;
+  }
+  el.innerHTML = `<div class="cdetail">
+      <button type="button" class="link back" data-uni-back>‹ All connectors</button>
+      <div class="chead">${logo(kind, 'lg')}<div class="body"><b>${c.name}</b><span>${host && st.connected ? esc(host) + (st.own_setup ? ' · your own setup' : '') : esc(c.where)}</span></div>${uniBadge(kind)}</div>
+      <p class="cabout">${esc(c.about)}</p>
+      <div class="ccan"><b>What SlideMate can do with it</b><ul>${CAN_DO.map((t) => `<li>${t}</li>`).join('')}</ul>
+        <span class="muted small">Read-only: it can’t submit work or post anything. Your sign-in stays on this Mac. <a href="${GH}${c.repo}">Open source on GitHub</a></span></div>
+      ${body}</div>`;
+}
+async function uniConnect(kind, url) {
+  const r = await post('/api/university/connect', { kind, url });
+  if (r.error) return toast(r.error, true);
+  toast(`Connecting ${CONNECTORS[kind].name}. A window opens for you to sign in.`, false, 7000);
+  loadSetup();
+  watchUni();
+}
+$('#uniResults').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-uni-host]');
+  if (!b) return;
+  e.preventDefault();
+  const u = UNIS.find((x) => x.host === b.dataset.uniHost);
+  uniOpen = u.kind;
+  uniAddr[u.kind] = u.host;
+  if (document.body.classList.contains('first-run')) draft.university = { kind: u.kind, url: u.host };
+  else if (!(uniSt[u.kind]?.connected || uniSt[u.kind]?.state === 'running')) uniConnect(u.kind, u.host);
+  renderUni();
+});
+$('#uniSearch').addEventListener('input', renderUniSearch);
+$('#uniSearch').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#uniResults .uni-hit')?.click(); } });
 $('#uniCards').addEventListener('click', async (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   e.preventDefault();
+  if (b.dataset.uniOpen) { uniOpen = b.dataset.uniOpen; return renderUni(); }
+  if ('uniBack' in b.dataset) { uniOpen = null; return renderUni(); }
+  if (b.id === 'btnGcSecret') { window.__openPanel = 'json'; return $('#gcSecretFile').click(); }
   const kind = b.dataset.uniGo || b.dataset.uniPick || b.dataset.uniPull || b.dataset.uniOff;
   const url = $(`[data-uni-url="${kind}"]`)?.value.trim() || '';
+  const c = CONNECTORS[kind];
   if (b.dataset.uniPick) {
-    if (!url) return toast(`Enter your ${UNI[kind].name} address first`, true);
+    if (c.example && !url) return toast(`Enter your ${c.name} address first`, true);
+    if (kind === 'classroom' && !uniSt.classroom?.has_secret) return toast('Choose your Google client file first', true);
     draft.university = draft.university?.kind === kind ? null : { kind, url };
     return renderUni();
   }
   if (b.dataset.uniPull) { $('#settings').close(); return startSync(false); }
   if (b.dataset.uniOff) {
-    if (!confirm(`Disconnect ${UNI[kind].name}? Slides you already have stay where they are.`)) return;
+    if (!confirm(`Disconnect ${c.name}? Slides you already have stay where they are.`)) return;
     uniSt = await post('/api/university/disconnect', { kind });
     cfg = await (await api('/api/config')).json();
     renderMcp(); renderSyncMode(); renderUni(); loadLibrary();
     return;
   }
-  if (!url) return toast(`Enter your ${UNI[kind].name} address, e.g. ${UNI[kind].example}`, true);
-  const r = await post('/api/university/connect', { kind, url });
-  if (r.error) return toast(r.error, true);
-  toast(`Connecting ${UNI[kind].name}. A window opens for you to sign in.`, false, 7000);
-  loadSetup();
-  watchUni();
+  if (c.example && !url) return toast(`Enter your ${c.name} address, e.g. ${c.example}`, true);
+  uniConnect(kind, url);
 });
 $('#uniCards').addEventListener('input', (e) => {
   const kind = e.target.dataset?.uniUrl;
-  if (kind && draft.university?.kind === kind) draft.university.url = e.target.value.trim();
+  if (!kind) return;
+  uniAddr[kind] = e.target.value.trim();
+  if (draft.university?.kind === kind) draft.university.url = uniAddr[kind];
+});
+$('#uniCards').addEventListener('change', async (e) => {
+  const t = e.target, kind = t.dataset.uniTutor || t.dataset.uniPullset;
+  if (!kind) return;
+  const r = await post('/api/university/permissions', t.dataset.uniTutor ? { kind, tutor: t.checked } : { kind, pull: t.checked });
+  if (r.error) { t.checked = !t.checked; return toast(r.error, true); }
+  uniSt[kind] = { ...uniSt[kind], ...r };
+  cfg = await (await api('/api/config')).json();
+  renderMcp(); renderSyncMode(); loadLibrary();
+});
+$('#gcSecretFile').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  const r = await post('/api/university/classroom-secret', { text: await f.text() });
+  if (r.error) return toast(r.error, true, 8000);
+  uniSt.classroom = { ...uniSt.classroom, ...r };
+  renderUni();
 });
 
 // ---------- Settings → Lecture recording → Your recordings ----------
@@ -1697,7 +1816,7 @@ async function saveSettings(now = false) {
   if (now) return go();
   saveT = setTimeout(go, 400);
 }
-$('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp, #uniCards')) saveSettings(); });
+$('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp, #uniCards, .uni-find')) saveSettings(); });
 $('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit, #setCardsNew')) saveSettings(); });
 $('#btnSettingsClose').onclick = () => $('#settings').close();
 $('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
@@ -1711,10 +1830,10 @@ $('#btnSettingsSave').onclick = async () => {  // first run: "Get started"
   $('#settings').close();
   toast('All set. Your courses are being organised.');
   const uni = draft.university;
-  if (uni?.url) {  // step 3: connect the university now that the library folder is saved
+  if (uni?.kind) {  // step 3: connect the university now that the library folder is saved
     const r = await post('/api/university/connect', uni);
     if (r.error) toast(r.error, true, 8000);
-    else { toast(`Connecting ${UNI[uni.kind].name}: sign in in the window that opens, and your slides will start arriving.`, false, 10000); watchUni(); }
+    else { toast(`Connecting ${CONNECTORS[uni.kind].name}: sign in in the window that opens, and your slides will start arriving.`, false, 10000); watchUni(); }
   }
   loadModels();
   loadLibrary();

@@ -5,6 +5,8 @@ It downloads uv (a single file; checksum pinned), and uv brings its own Python a
                   ffmpeg (from imageio-ffmpeg) and the speech model (~2.3 GB, downloaded once)
   - "moodle":     the Moodle connection (github.com/Mattlo0546/moodle-mcp)
   - "blackboard": the Blackboard connection (github.com/Mattlo0546/blackboard-mcp)
+  - "canvas":     the Canvas connection (github.com/Mattlo0546/canvas-mcp)
+  - "classroom":  the Google Classroom connection (github.com/Mattlo0546/classroom-mcp)
 Everything lives in <SlideMate data>/tools, whose bin/ folder is first on SlideMate's PATH (config.EXTRA_PATH).
 """
 import json
@@ -35,6 +37,10 @@ PACKAGES = {
                "exe": "moodle-mcp", "label": "the Moodle connection"},
     "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.1.0.zip",
                    "exe": "blackboard-mcp", "label": "the Blackboard connection"},
+    "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.1.1.zip",
+               "exe": "canvas-mcp", "label": "the Canvas connection"},
+    "classroom": {"spec": "classroom-mcp @ https://github.com/Mattlo0546/classroom-mcp/archive/refs/tags/v0.2.0.zip",
+                  "exe": "classroom-mcp", "label": "the Google Classroom connection"},
 }
 SPEECH_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"  # parakeet-mlx's default
 MIN_FREE_GB = 6  # don't start the automatic speech download on a nearly full disk

@@ -483,11 +483,46 @@ body.first-run .pane[data-pane="ai"] .set-group:first-child .set-label b::before
 #btnSettingsSave:disabled { opacity: .45; cursor: default; }
 @media (min-width: 1000px) { body.first-run .pcards { grid-template-columns: repeat(3, 1fr); } }
 body.first-run #settings .pcard { padding: 10px 12px; }
-/* Your university: Moodle / Blackboard cards; "Advanced" (any MCP server) folded away */
-#uniCards .pcard { cursor: default; }
-#uniCards .uni-url { width: 100%; margin-top: 4px; }
-#uniCards .uni-step { font-size: 12px; color: var(--muted); }
-#uniCards .uni-err { font-size: 12px; color: #e5a50a; }
+/* Your university: search, the connector directory (logo tiles → details with permissions); "Advanced" folded away */
+.clogo { width: 36px; height: 36px; padding: 7px; border-radius: 10px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08); flex: none; object-fit: contain; }
+.clogo.sm { width: 28px; height: 28px; padding: 5px; border-radius: 8px; }
+.clogo.lg { width: 48px; height: 48px; padding: 9px; border-radius: 12px; }
+.uni-find { display: flex; flex-direction: column; gap: 6px; }
+.uni-find #uniSearch { width: 100%; }
+.uni-results { display: flex; flex-direction: column; gap: 2px; }
+.uni-results .hint { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+.uni-hit { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.uni-hit:hover { background: var(--hover); }
+.uni-hit .body, .ccard .body, .chead .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.uni-hit .body b { font-size: 13px; font-weight: 600; }
+.uni-hit .body span, .ccard .body span, .chead .body span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uni-hit .go { font-size: 12px; color: var(--text-2); padding: 3px 10px; border-radius: 999px; box-shadow: 0 0 0 1px var(--border-strong); white-space: nowrap; }
+.cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ccard { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.ccard:hover { border-color: var(--border-strong); background: var(--hover); }
+.ccard .body b { font-size: 13.5px; font-weight: 600; }
+.cdetail { display: flex; flex-direction: column; gap: 12px; }
+.cdetail .back { align-self: flex-start; border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.cdetail .back:hover { color: var(--text); }
+.chead { display: flex; align-items: center; gap: 12px; }
+.chead .body b { font-size: 16px; font-weight: 600; }
+.cabout { margin: 0; color: var(--text-2); font-size: 13px; }
+.ccan { padding: 10px 12px; border-radius: 10px; background: var(--hover); font-size: 12.5px; }
+.ccan ul { margin: 6px 0 8px; padding: 0; list-style: none; }
+.ccan li { padding: 2px 0 2px 20px; position: relative; color: var(--text-2); }
+.ccan li::before { content: "✓"; position: absolute; left: 2px; color: #10a37f; }
+.ccan a, .csteps a { color: var(--text); }
+.cperm { border: 1px solid var(--border); border-radius: 10px; }
+#settings .cperm .set-row { padding: 10px 12px; }
+.ctools > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.ctools > div { margin-top: 6px; line-height: 1.9; }
+.ctools code { font: 11px ui-monospace, Menlo, monospace; background: var(--hover); padding: 2px 6px; border-radius: 6px; }
+.csteps { margin: 0; padding-left: 20px; font-size: 12.5px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px; }
+.cdetail .acts { display: flex; gap: 6px; }
+.cdetail label.field { margin: 0 !important; }
+.cstep { font-size: 12.5px; color: var(--text-2); }
+.cdetail .uni-err { font-size: 12px; color: #e5a50a; }
+@media (max-width: 700px) { .cgrid { grid-template-columns: 1fr; } }
 details.advanced { margin-top: 14px; }
 details.advanced > summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 2px; }
 details.advanced[open] > summary { margin-bottom: 8px; }

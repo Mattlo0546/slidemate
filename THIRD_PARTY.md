@@ -10,3 +10,8 @@ SlideMate bundles these libraries in `server/static/vendor/`:
 
 At runtime SlideMate can call, if installed: Claude Code, Codex CLI, parakeet-mlx (NVIDIA Parakeet), ffmpeg and
 poppler. These are not distributed with SlideMate.
+
+The connector logos in `server/static/logos/` identify each learning platform. The Canvas, Moodle and Google Classroom
+marks are from [Simple Icons](https://simpleicons.org) (CC0); the Blackboard mark is drawn. Canvas is a trademark of
+Instructure, Moodle of Moodle Pty Ltd, Blackboard of Anthology Inc. and Google Classroom of Google LLC. SlideMate isn't
+affiliated with them.
