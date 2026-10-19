@@ -40,6 +40,8 @@ $('#libSort').value = store.get('libSort', 'week');
 const newBaseline = store.get('newBaseline', null) ?? (store.set('newBaseline', Date.now() / 1000), Date.now() / 1000);
 const opened = new Set(store.get('opened', []));
 const isNew = (i) => i.mtime > newBaseline && !opened.has(i.path);
+// Files and courses already on screen: anything that appears after the first render (a Pull, a drop) slides in.
+let shownPaths = null, shownCourses = null, pullBase = null;  // pullBase: files there when the current Pull began
 
 function shortCourse(name) {
   return name.replace(/Artificial Intelligence/g, 'AI').replace(/^Introduction to /, 'Intro to ').replace(/^Methods of /, 'Methods of ');
@@ -92,12 +94,22 @@ function renderChipsAndStatus(courses) {
       <div><button class="primary small" id="btnSetupLib">Choose folder…</button></div></div>`);
   }
   if (sy.running) {
-    parts.push(`<div class="status"><div class="t">${esc(verb)}…</div><div class="log">${esc(sy.log?.at(-1) || 'Starting')}</div></div>`);
+    pullBase ||= new Set(lib.items.map((i) => i.path));
+    const arrived = lib.items.filter((i) => !pullBase.has(i.path)).length;
+    parts.push(`<div class="status arriving"><div class="t">${icon('sparkle')} ${!lib.items.length || arrived || (sy.label || '').startsWith('Pull') ? 'Bringing in your slides' : esc(verb) + '…'}</div>
+      ${arrived ? `<div>${arrived} new file${arrived > 1 ? 's' : ''} so far</div>` : ''}<div class="log">${esc(sy.log?.at(-1) || 'Starting')}</div></div>`);
   } else if (sy.result === 'login_required') {
     parts.push(`<div class="status warn"><div class="t">Sign-in expired</div>
       ${sy.has_login ? `<div><button class="primary small" id="btnSyncLogin">Sign in &amp; ${esc((sy.label || 'sync').replace(/^Pull/, 'pull'))}</button></div>` : '<div>Run your sync tool\'s sign-in, then try again.</div>'}</div>`);
   } else if (sy.result === 'ok') {
     parts.push(`<div class="status"><div class="t">${(sy.label || '').startsWith('Pull') ? 'Pulled' : 'Synced'} ✓</div><div class="log">${esc(sy.log?.at(-1) || 'Up to date')}</div></div>`);
+    const skipped = (sy.skipped || []).filter((c) => !dismissedSkips.has(String(c.id)));
+    if (skipped.length && sy.can_choose) {
+      parts.push(`<div class="status"><div class="t">Left out ${skipped.length} site${skipped.length > 1 ? 's' : ''} that ${skipped.length > 1 ? "aren't courses" : "isn't a course"}</div>
+        <div class="skipped">${skipped.slice(0, 6).map((c) => `<div class="s"><span title="${esc(c.why)}">${esc(c.name)}</span>
+          <button class="small ghost" data-include="${esc(c.id)}">Add</button></div>`).join('')}
+        <button class="small ghost" id="btnSkipsOk">That's right</button></div></div>`);
+    }
   } else if (sy.result === 'login_failed' || sy.result === 'error') {
     parts.push(`<div class="status warn"><div class="t">Sync didn't finish</div><div class="log">${esc(sy.log?.at(-1) || '')}</div></div>`);
   }
@@ -106,11 +118,23 @@ function renderChipsAndStatus(courses) {
       <div><button class="small" id="btnSortInbox">${icon('sparkle')} Sort into courses</button></div></div>`);
   }
   if (lib.classifying) parts.push(`<div class="status"><div class="t">${icon('sparkle')} Organising library…</div><div>Sorting lectures, labs and readings.</div></div>`);
+  if (!sy.running) pullBase = null;
   st.innerHTML = parts.join('');
+  st.querySelectorAll('[data-include]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    const r = await post('/api/sync/courses', { include: [b.dataset.include] });
+    if (r.error) return toast(r.error, true);
+    lib.sync = r; renderLibrary(); schedulePoll();
+  }));
+  $('#btnSkipsOk')?.addEventListener('click', () => {
+    (sy.skipped || []).forEach((c) => dismissedSkips.add(String(c.id)));
+    store.set('dismissedSkips', [...dismissedSkips]); renderLibrary();
+  });
   $('#btnSyncLogin')?.addEventListener('click', () => startSync(true));
   $('#btnSetupLib')?.addEventListener('click', () => openSettings());
   $('#btnSortInbox')?.addEventListener('click', async () => { await post('/api/sort-inbox'); toast('Sorting inbox…'); setTimeout(loadLibrary, 4000); });
 }
+const dismissedSkips = new Set(store.get('dismissedSkips', []));
 function saveHidden() { store.set('hiddenCourses', [...hiddenCourses]); renderLibrary(); }
 
 function sortItems(items) {
@@ -133,7 +157,8 @@ function group(key, head, kidsHtml, cls) {
 
 function fileRow(i, extra = '') {
   const due = cardMap.get(i.path)?.counts.due;
-  return `<button class="file${i.path === state.path ? ' active' : ''}" data-path="${esc(i.path)}" title="${esc(i.name)}">
+  const fresh = shownPaths && !shownPaths.has(i.path);
+  return `<button class="file${i.path === state.path ? ' active' : ''}${fresh ? ' arrive' : ''}" data-path="${esc(i.path)}" title="${esc(i.name)}">
       <span class="ttl">${extra}${esc(i.title)}</span>
       ${isNew(i) ? '<span class="new" title="New, not opened yet"></span>' : ''}
       ${i.hasChat ? icon('chat', 'has-chat') : ''}
@@ -161,7 +186,10 @@ function renderLibrary() {
     let catHtml = '';
     for (const cat of cats) {
       const its = sortItems(items.filter((i) => i.category === cat));
-      if (cat === null) { catHtml += `<div class="sorting">${its.length} file${its.length > 1 ? 's' : ''} being sorted…</div>`; continue; }
+      if (cat === null) {  // not sorted into Lectures / Labs / Readings yet: show them now, sorted in a moment
+        catHtml += `<div class="just-arrived">Just arrived · sorting…</div>${its.map((i) => fileRow(i)).join('')}`;
+        continue;
+      }
       const files = its.map((i) => fileRow(i)).join('');
       catHtml += group(`${course}::${cat}`, `<span>${esc(cat)}</span><span class="count">${its.length}</span>`, files, 'cat');
     }
@@ -170,7 +198,7 @@ function renderLibrary() {
     const head = `<span class="name">${esc(title)}</span>${code ? `<span class="code">${esc(code)}</span>` : ''}
       <span class="count">${items.length}</span><span class="focus" data-focus="${esc(course)}" title="Show only this course">${icon('focus')}</span>
       ${items[0].courseDir ? `<span class="more" data-cmenu="${esc(items[0].courseDir)}" title="More">${icon('dots')}</span>` : ''}`;
-    html += group(course, head, catHtml, 'course');
+    html += group(course, head, catHtml, 'course' + (shownCourses && !shownCourses.has(course) ? ' arrive' : ''));
   }
   // Archived: whole courses + single files, tucked away at the bottom (collapsed by default).
   let arch = archived;
@@ -186,7 +214,9 @@ function renderLibrary() {
     if (!collapsed.has('__archived_init')) { collapsed.add('__archived'); collapsed.add('__archived_init'); }
     html += group('__archived', `${icon('inbox')}<span class="name">Archived</span><span class="count">${arch.length}</span>`, archKids, 'course archived');
   }
-  $('#libList').innerHTML = html || `<div class="sorting">No files${q ? ' match' : ''}.</div>`;
+  $('#libList').innerHTML = html || (lib.sync?.running ? '' : `<div class="sorting">${q ? 'No files match.' : 'No slides yet. Drop PDFs onto the window, or connect your university in Settings.'}</div>`);
+  shownPaths = new Set(lib.items.map((i) => i.path));
+  shownCourses = new Set(live.map((i) => i.course));
 }
 
 $('#libList').addEventListener('click', (e) => {
@@ -1134,7 +1164,7 @@ $('#btnLibClose').onclick = toggleLib;
 if (store.get('chatHidden', false)) document.body.classList.add('chat-hidden');
 if (store.get('libHidden', false)) document.body.classList.add('lib-hidden');
 
-// ---------- settings + first-run setup ----------
+// ---------- settings ----------
 let sysStatus = null;
 const PROVIDER_NAMES = { claude: 'Claude', codex: 'ChatGPT', cursor: 'Cursor', grok: 'Grok', antigravity: 'Antigravity', ollama: 'Ollama' };
 // Providers whose model is picked from a list in Settings (the list comes from the CLI or app).
@@ -1156,13 +1186,13 @@ function renderRoots() {
   $('#rootList').innerHTML = (draft.library_roots || []).map((r, i) => `<div class="root"><span title="${esc(r)}">${esc(r)}</span><button type="button" data-rm="${i}" title="Remove">✕</button></div>`).join('')
     || '<div class="hint">No folder chosen yet.</div>';
 }
-$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); saveSettings(); updateGate(); } });
+$('#rootList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { draft.library_roots.splice(+b.dataset.rm, 1); renderRoots(); saveSettings(); } });
 async function pickFolder() {
   const native = window.webkit?.messageHandlers?.slidemate;
   if (native) return new Promise((done) => { window.__slidemateFolder = done; native.postMessage({ action: 'pickFolder' }); });
   return (await post('/api/pick-folder')).path;  // browser / dev mode: AppleScript dialog
 }
-function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); saveSettings(); updateGate(); } }
+function addRoot(path) { if (path && !draft.library_roots.includes(path)) { draft.library_roots.push(path); renderRoots(); saveSettings(); } }
 $('#btnAddRoot').onclick = async () => addRoot(await pickFolder());
 $('#btnStarter').onclick = async () => { addRoot((await post('/api/starter-folder')).path); toast('Created Documents/SlideMate: add a folder per course, or drop PDFs into it'); };
 // Install / sign-in run in a Terminal window; while one is open (or the chosen AI isn't ready) the status is
@@ -1196,14 +1226,6 @@ function watchStatus() {
     if (providerReady(draft.provider) && !Object.keys(setupPending).length) { clearInterval(statusPoll); statusPoll = null; }
   }, 3000);
 }
-function updateGate() {
-  if (!document.body.classList.contains('first-run')) return;
-  const need = !(draft.library_roots || []).length ? 'Next: choose the folder with your lecture slides.'
-    : !providerReady(draft.provider) ? `Next: ${sysStatus?.providers?.[draft.provider]?.installed && draft.provider !== 'ollama' ? 'sign in to' : 'set up'} ${PROVIDER_NAMES[draft.provider]} (or pick another AI).`
-    : '';
-  $('#btnSettingsSave').disabled = !!need;
-  $('#setFootHint').textContent = need || 'All set. You can change any of this later in Settings (⌘,).';
-}
 function renderProviders() {
   const ps = sysStatus?.providers || {};
   const free = draft.ai_plan !== 'paid';
@@ -1211,7 +1233,11 @@ function renderProviders() {
   const card = (id, name, sub, tag) => {
     const s = ps[id] || {};
     const waiting = setupPending[id] && !(s.installed && s.logged_in);
-    const state = waiting ? `<span class="pill-status"><span class="spinner"></span>Finish in the Terminal window…</span>`
+    const job = ob.aiJobs[id], busy = job && ['installing', 'signing_in'].includes(job.state);
+    const state = busy ? `<span class="pill-status"><span class="spinner"></span>${esc(job.step || 'Setting up…')}</span>${job.user_code ? `<div class="st">Code: <b>${esc(job.user_code)}</b></div>` : ''}
+        ${job.needs_code ? `<div class="acts"><input class="set-input" data-code-for="${id}" placeholder="Paste the code from your browser"><button type="button" class="small primary" data-code-go="${id}">Sign in</button></div>` : ''}`
+      : job?.state === 'failed' && !(s.installed && s.logged_in) ? `<span class="pill-status bad">${esc(job.error)}</span><div class="acts"><button type="button" class="small primary" data-install="${id}">Try again</button></div>`
+      : waiting ? `<span class="pill-status"><span class="spinner"></span>Finish in the Terminal window…</span>`
       : !s.installed ? `<span class="pill-status bad">Not installed</span><div class="acts"><button type="button" class="small primary" data-install="${id}">Install &amp; ${id === 'ollama' ? 'set up' : 'sign in'}</button></div>`
       : !s.logged_in ? `<span class="pill-status bad">${esc(s.not_ready || 'Not signed in')}</span><div class="acts"><button type="button" class="small primary" data-login="${id}">${esc(s.login_label || 'Sign in…')}</button></div>`
       : `<span class="pill-status ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
@@ -1250,7 +1276,6 @@ function renderProviders() {
     $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
        <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, draft.claude_notes_model)}</label>`;
   }
-  updateGate();
   if (!providerReady(draft.provider) || Object.keys(setupPending).length) watchStatus();
 }
 let setCat = null, setCatLoading = false;  // every provider's model list, for the settings pane
@@ -1271,18 +1296,23 @@ function setPlan(plan) {
 $('#settings').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { e.preventDefault(); setPlan(b.dataset.plan); } });
 $('#providerCards').addEventListener('change', (e) => { if (e.target.name === 'prov') { readModelFields(); draft.provider = e.target.value; renderProviders(); } });
 $('#providerCards').addEventListener('click', async (e) => {
+  const go = e.target.closest('[data-code-go]');
+  if (go) {
+    e.preventDefault();
+    const code = $(`[data-code-for="${go.dataset.codeGo}"]`)?.value.trim();
+    if (code) { await post('/api/ai/code', { provider: go.dataset.codeGo, code }); pollAI(); }
+    return;
+  }
+  if (e.target.closest('[data-code-for]')) return e.preventDefault();
   const b = e.target.closest('[data-login], [data-install]');
   if (!b) return;
   e.preventDefault();
   const id = b.dataset.login || b.dataset.install;
   readModelFields();
   if (draft.provider !== id) { draft.provider = id; saveSettings(); }
-  const r = await post('/api/login', { provider: id, install: !!b.dataset.install });
-  if (!r.ok) return toast("Couldn't open Terminal. Try again, or see the README for the manual steps.", true);
-  setupPending[id] = true;
+  await startAI(id);  // installs if needed, then signs in through the browser: no Terminal
   renderProviders();
-  toast(b.dataset.install ? 'A Terminal window opened: it installs, then opens your browser to sign in. SlideMate notices when you’re done.'
-    : 'Sign in in your browser (from the Terminal window that opened). SlideMate notices when you’re done.', false, 9000);
+  watchStatus();
 });
 function readModelFields() {
   if ($('#setCodexModel')) draft.codex_model = $('#setCodexModel').value.trim();
@@ -1302,11 +1332,8 @@ function showPane(name) {
   store.set('settingsPane', name);
 }
 document.querySelector('.set-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
-async function openSettings(firstRun = false, pane) {
+async function openSettings(pane) {
   draft = JSON.parse(JSON.stringify(cfg));
-  document.body.classList.toggle('first-run', firstRun);
-  $('#welcome').hidden = !firstRun;
-  $('#setFoot').hidden = !firstRun;
   $('#savedHint').textContent = '';
   showPane(pane || store.get('settingsPane', 'general'));
   renderRoots();
@@ -1418,10 +1445,9 @@ const uniAddr = {};           // address typed or picked per connector, before c
 const logo = (kind, cls = '') => `<img class="clogo ${cls}" src="logos/${kind}.svg" alt="">`;
 
 function uniBadge(kind) {
-  const st = uniSt[kind] || {}, picked = document.body.classList.contains('first-run') && draft.university?.kind === kind;
+  const st = uniSt[kind] || {};
   return st.state === 'running' ? '<span class="pill-status"><span class="spinner"></span>Connecting…</span>'
     : st.connected ? '<span class="pill-status ok">✓ Connected</span>'
-    : picked ? '<span class="pill-status ok">✓ After Get started</span>'
     : st.state === 'failed' ? '<span class="pill-status bad">Didn’t finish</span>' : '';
 }
 function renderUniSearch() {
@@ -1441,13 +1467,12 @@ function renderUni() {
         ${logo(kind)}<span class="body"><b>${c.name}</b><span>${esc(c.where)}</span></span>${uniBadge(kind)}</button>`).join('')}</div>`;
     return;
   }
-  const kind = uniOpen, c = CONNECTORS[kind], st = uniSt[kind] || {}, firstRun = document.body.classList.contains('first-run');
+  const kind = uniOpen, c = CONNECTORS[kind], st = uniSt[kind] || {};
   const host = (st.url || '').replace(/^https?:\/\//, '');
-  const picked = firstRun && draft.university?.kind === kind;
   let body;
   if (st.state === 'running') {
     body = `<div class="cstep"><span class="spinner"></span>${esc(st.step || 'Connecting…')}</div>`;
-  } else if (st.connected && !firstRun) {
+  } else if (st.connected) {
     const tools = st.tools || [];
     body = `<div class="cperm">
         <label class="set-row"><div class="set-label"><b>The tutor can use it</b><span>While answering, the tutor can look up your deadlines, announcements and course pages.</span></div>
@@ -1458,13 +1483,12 @@ function renderUni() {
       ${tools.length ? `<details class="ctools"><summary>${tools.length} tools it gives SlideMate</summary><div>${tools.map((t) => `<code>${esc(t)}</code>`).join(' ')}</div></details>` : ''}
       <div class="acts"><button type="button" class="small" data-uni-pull="${kind}">Pull new slides</button><button type="button" class="small ghost" data-uni-off="${kind}">Disconnect</button></div>`;
   } else {
-    const val = picked ? draft.university.url : uniAddr[kind] ?? host;
+    const val = uniAddr[kind] ?? host;
     const addr = c.example ? `<label class="field">Your ${c.name} address<input class="set-input uni-url" data-uni-url="${kind}" placeholder="e.g. ${c.example}" value="${esc(val || '')}" spellcheck="false" autocapitalize="off"></label>` : '';
     const gc = kind === 'classroom' ? `<ol class="csteps">
         <li>Create your Google sign-in client: <a href="${GH}classroom-mcp#google-setup-about-10-minutes-once">follow these steps</a> (about 10 minutes, once).</li>
         <li><button type="button" class="small" id="btnGcSecret">${st.has_secret ? '✓ Client file chosen. Choose another…' : 'Choose client file…'}</button></li></ol>` : '';
-    const go = firstRun ? `<button type="button" class="small ${picked ? '' : 'primary'}" data-uni-pick="${kind}">${picked ? 'Don’t connect' : 'Connect after Get started'}</button>`
-      : `<button type="button" class="small primary" data-uni-go="${kind}">${st.state === 'failed' ? 'Try again' : 'Connect'}</button>`;
+    const go = `<button type="button" class="small primary" data-uni-go="${kind}">${st.state === 'failed' ? 'Try again' : 'Connect'}</button>`;
     body = `${st.state === 'failed' ? `<div class="uni-err">${esc(st.error || '')}</div>` : ''}${gc}${addr}<div class="acts">${go}</div>`;
   }
   el.innerHTML = `<div class="cdetail">
@@ -1489,8 +1513,7 @@ $('#uniResults').addEventListener('click', (e) => {
   const u = UNIS.find((x) => x.host === b.dataset.uniHost);
   uniOpen = u.kind;
   uniAddr[u.kind] = u.host;
-  if (document.body.classList.contains('first-run')) draft.university = { kind: u.kind, url: u.host };
-  else if (!(uniSt[u.kind]?.connected || uniSt[u.kind]?.state === 'running')) uniConnect(u.kind, u.host);
+  if (!(uniSt[u.kind]?.connected || uniSt[u.kind]?.state === 'running')) uniConnect(u.kind, u.host);
   renderUni();
 });
 $('#uniSearch').addEventListener('input', renderUniSearch);
@@ -1502,15 +1525,9 @@ $('#uniCards').addEventListener('click', async (e) => {
   if (b.dataset.uniOpen) { uniOpen = b.dataset.uniOpen; return renderUni(); }
   if ('uniBack' in b.dataset) { uniOpen = null; return renderUni(); }
   if (b.id === 'btnGcSecret') { window.__openPanel = 'json'; return $('#gcSecretFile').click(); }
-  const kind = b.dataset.uniGo || b.dataset.uniPick || b.dataset.uniPull || b.dataset.uniOff;
+  const kind = b.dataset.uniGo || b.dataset.uniPull || b.dataset.uniOff;
   const url = $(`[data-uni-url="${kind}"]`)?.value.trim() || '';
   const c = CONNECTORS[kind];
-  if (b.dataset.uniPick) {
-    if (c.example && !url) return toast(`Enter your ${c.name} address first`, true);
-    if (kind === 'classroom' && !uniSt.classroom?.has_secret) return toast('Choose your Google client file first', true);
-    draft.university = draft.university?.kind === kind ? null : { kind, url };
-    return renderUni();
-  }
   if (b.dataset.uniPull) { $('#settings').close(); return startSync(false); }
   if (b.dataset.uniOff) {
     if (!confirm(`Disconnect ${c.name}? Slides you already have stay where they are.`)) return;
@@ -1526,7 +1543,6 @@ $('#uniCards').addEventListener('input', (e) => {
   const kind = e.target.dataset?.uniUrl;
   if (!kind) return;
   uniAddr[kind] = e.target.value.trim();
-  if (draft.university?.kind === kind) draft.university.url = uniAddr[kind];
 });
 $('#uniCards').addEventListener('change', async (e) => {
   const t = e.target, kind = t.dataset.uniTutor || t.dataset.uniPullset;
@@ -1801,7 +1817,6 @@ function settingsPayload() {
 // Changes apply as you make them (no Save button), like Cursor.
 let saveT;
 async function saveSettings(now = false) {
-  if (document.body.classList.contains('first-run')) return;  // first run saves on "Get started"
   clearTimeout(saveT);
   const go = async () => {
     const before = cfg;
@@ -1819,27 +1834,7 @@ async function saveSettings(now = false) {
 $('#settings').addEventListener('change', (e) => { if (!e.target.closest('#mcpForm, #mcpImport, .mcp, #uniCards, .uni-find')) saveSettings(); });
 $('#settings').addEventListener('input', (e) => { if (e.target.matches('#setIpad, #setSync, #setSyncLogin, #setCodexModel, #setRecLimit, #setCardsNew')) saveSettings(); });
 $('#btnSettingsClose').onclick = () => $('#settings').close();
-$('#settings').addEventListener('cancel', (e) => { if (document.body.classList.contains('first-run')) e.preventDefault(); });
-$('#settings').addEventListener('close', () => { if (!document.body.classList.contains('first-run')) saveSettings(true); });
-$('#btnSettingsSave').onclick = async () => {  // first run: "Get started"
-  const payload = settingsPayload();
-  if (!payload.library_roots.length) { showPane('general'); return toast('Choose your slides folder first', true); }
-  if (!providerReady(payload.provider)) return toast('Set up an AI tutor first', true);
-  cfg = await post('/api/config', { ...payload, setup_done: true });
-  document.body.classList.remove('first-run');
-  $('#settings').close();
-  toast('All set. Your courses are being organised.');
-  const uni = draft.university;
-  if (uni?.kind) {  // step 3: connect the university now that the library folder is saved
-    const r = await post('/api/university/connect', uni);
-    if (r.error) toast(r.error, true, 8000);
-    else { toast(`Connecting ${CONNECTORS[uni.kind].name}: sign in in the window that opens, and your slides will start arriving.`, false, 10000); watchUni(); }
-  }
-  loadModels();
-  loadLibrary();
-  if (state.pdf) setCurrent(state.current);
-};
-
+$('#settings').addEventListener('close', () => saveSettings(true));
 // ---------- resizable panels ----------
 const PANEL = {
   library: { v: '--lib-w', def: 272, min: 200, max: () => Math.min(560, innerWidth * 0.4) },
@@ -2930,12 +2925,246 @@ window.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g' && !$('#findBar').hidden) { e.preventDefault(); find.step(e.shiftKey ? -1 : 1); }
 }, { capture: true });
 
+
+// =====================================================================================
+// Onboarding: first launch. Sign in to an AI, find your university, sign in to it, and the slides arrive.
+// =====================================================================================
+const AI_TILES = [
+  { id: 'claude', name: 'Claude', what: 'Claude Pro or Max', bg: '#d97757', glyph: '✳' },
+  { id: 'codex', name: 'ChatGPT', what: 'Any ChatGPT plan, Free included', bg: '#10a37f', glyph: '◎' },
+  { id: 'antigravity', name: 'Gemini', what: 'Any Google account', bg: 'linear-gradient(135deg,#4285f4,#9b72cb,#d96570)', glyph: '✦', free: true },
+];
+const AI_MORE = [
+  { id: 'cursor', name: 'Cursor', what: 'Your Cursor plan', bg: '#111', glyph: '▲' },
+  { id: 'grok', name: 'Grok', what: 'grok.com or SuperGrok', bg: '#111', glyph: '𝕏' },
+  { id: 'ollama', name: 'On this Mac', what: 'Free and offline (Ollama, ~6 GB). Simpler answers.', bg: '#777', glyph: '◐' },
+];
+const ob = { step: 'ai', provider: null, aiJobs: {}, poll: null, uni: null, findT: null, findSeq: 0, connPoll: null };
+
+function openOnboarding() {
+  document.body.classList.add('onboarding');
+  $('#onboard').hidden = false;
+  obShow('ai');
+  renderAITiles();
+  loadStatus().then(() => {  // which AIs are already installed and signed in (a few seconds: some checks go online)
+    const ready = [...AI_TILES, ...AI_MORE].find((t) => providerReady(t.id));
+    if (ready && !ob.provider) ob.provider = ready.id;
+    if (AI_MORE.some((t) => t.id === ob.provider)) $('#obMoreAI').open = true;
+    renderAITiles();
+  });
+}
+function obShow(step) {
+  ob.step = step;
+  document.querySelectorAll('.ob-step').forEach((el) => el.classList.toggle('on', el.dataset.step === step));
+  const order = ['ai', 'uni', 'connect'];
+  document.querySelectorAll('.ob-dots li').forEach((d) => d.classList.toggle('on', order.indexOf(d.dataset.dot) <= order.indexOf(step)));
+  if (step === 'uni') $('#obUniQ').focus();
+}
+
+// ---- step 1: AI
+function aiTile(t) {
+  const st = sysStatus?.providers?.[t.id], job = ob.aiJobs[t.id];
+  const badge = providerReady(t.id) ? '<span class="badge ok">✓ Signed in</span>'
+    : job && !['failed', 'done'].includes(job.state) ? '<span class="badge"><span class="spinner"></span>Setting up</span>'
+    : t.free ? '<span class="badge free">Free</span>' : !sysStatus ? '' : '';
+  return `<button class="ob-tile${ob.provider === t.id ? ' on' : ''}" data-ai="${t.id}">
+    <span class="mono" style="background:${t.bg}">${t.glyph}</span>${badge}
+    <b>${esc(t.name)}</b><span class="what">${esc(t.what)}</span></button>`;
+}
+function renderAITiles() {
+  $('#obAI').innerHTML = AI_TILES.map(aiTile).join('');
+  $('#obAIMore').innerHTML = AI_MORE.map(aiTile).join('');
+  renderAIFlow();
+}
+function renderAIFlow() {
+  const id = ob.provider, flow = $('#obAIFlow'), next = $('#obAINext');
+  const name = [...AI_TILES, ...AI_MORE].find((t) => t.id === id)?.name;
+  next.hidden = !(id && providerReady(id));
+  next.textContent = `Continue with ${name}`;
+  const job = id && ob.aiJobs[id];
+  if (!id || providerReady(id) || !job) { flow.hidden = true; return; }
+  flow.hidden = false;
+  if (job.state === 'failed') {
+    flow.innerHTML = `<div class="line"><b>That didn't work.</b></div><div class="hint">${esc(job.error)}</div>
+      <div class="row"><button class="small primary" data-ai-retry="${id}">Try again</button>
+      <button class="small ghost" data-ai-terminal="${id}">Do it in Terminal instead</button></div>`;
+    return;
+  }
+  const lines = [`<div class="line"><span class="spinner"></span><b>${esc(job.step || 'Starting…')}</b></div>`];
+  if (job.state === 'installing') lines.push(`<div class="hint">Downloading ${esc(name)}. This takes about a minute, once.</div>`);
+  if (job.user_code) lines.push(`<div class="hint">Check this code matches the one in your browser, then approve:</div><div class="code">${esc(job.user_code)}</div>`);
+  if (job.needs_code) {
+    lines.push(`<div class="hint">After you sign in, your browser shows a code. Copy it and paste it here:</div>
+      <div class="paste"><input class="set-input" id="obCode" placeholder="Paste the code" autocomplete="off" spellcheck="false"><button class="primary small" id="obCodeGo">Sign in</button></div>`);
+  } else if (job.state === 'signing_in') {
+    lines.push(`<div class="hint">Finish signing in in your browser. SlideMate notices by itself when you're done.</div>`);
+  }
+  if (job.url) lines.push(`<div class="row"><a href="${esc(job.url)}" target="_blank" class="small">Browser didn't open? Open the sign-in page</a></div>`);
+  const keep = document.activeElement?.id === 'obCode' ? $('#obCode').value : null;
+  flow.innerHTML = lines.join('');
+  if (keep !== null) { $('#obCode').value = keep; $('#obCode').focus(); }
+}
+async function pollAI() {
+  clearTimeout(ob.poll);
+  let jobs = {};
+  try { jobs = await (await api('/api/ai/setup')).json(); } catch { /* next time */ }
+  ob.aiJobs = jobs;
+  const running = Object.values(jobs).some((j) => ['installing', 'signing_in'].includes(j.state));
+  for (const [id, j] of Object.entries(jobs)) {
+    if (j.state === 'done' && !providerReady(id)) {  // signed in: confirm with the provider's own check
+      const fresh = await (await api('/api/status?only=' + id)).json();
+      sysStatus = { ...sysStatus, providers: { ...sysStatus?.providers, ...fresh.providers } };
+      if (providerReady(id) && ob.provider === id && ob.step === 'ai') setTimeout(() => ob.step === 'ai' && obAIContinue(), 900);
+    }
+  }
+  if (ob.step === 'ai') renderAITiles();
+  else if ($('#settings').open) renderProviders();
+  if (running) ob.poll = setTimeout(pollAI, 1000);
+}
+async function startAI(id) {
+  ob.aiJobs[id] = { state: 'installing', step: 'Starting…' };
+  renderAITiles();
+  ob.aiJobs[id] = await post('/api/ai/setup', { provider: id });
+  pollAI();
+}
+$('#onboard').addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-ai]');
+  if (t) {
+    ob.provider = t.dataset.ai;
+    const job = ob.aiJobs[ob.provider];
+    if (!providerReady(ob.provider) && !(job && ['installing', 'signing_in'].includes(job.state))) startAI(ob.provider);
+    return renderAITiles();
+  }
+  const retry = e.target.closest('[data-ai-retry]');
+  if (retry) return startAI(retry.dataset.aiRetry);
+  const term = e.target.closest('[data-ai-terminal]');
+  if (term) {
+    await post('/api/login', { provider: term.dataset.aiTerminal, install: !sysStatus?.providers?.[term.dataset.aiTerminal]?.installed });
+    setupPending[term.dataset.aiTerminal] = true;
+    return watchStatus();
+  }
+  if (e.target.id === 'obCodeGo') {
+    const code = $('#obCode').value.trim();
+    if (!code) return;
+    await post('/api/ai/code', { provider: ob.provider, code });
+    pollAI();
+  }
+});
+$('#onboard').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'obCode') $('#obCodeGo').click(); });
+function obAIContinue() {
+  if (!providerReady(ob.provider)) return;
+  obShow('uni');
+}
+$('#obAINext').onclick = obAIContinue;
+
+// ---- step 2: find the university
+const KIND_NAMES = { moodle: 'Moodle', blackboard: 'Blackboard', canvas: 'Canvas' };
+$('#obUniQ').addEventListener('input', () => {
+  clearTimeout(ob.findT);
+  const q = $('#obUniQ').value.trim();
+  if (q.length < 2) { $('#obUniResults').innerHTML = ''; return; }
+  const looksLikeAddress = q.includes('.') || q.includes('@');
+  const seq = ++ob.findSeq;
+  if (looksLikeAddress) $('#obUniResults').innerHTML = '<div class="muted"><span class="spinner"></span>Looking for your university\'s course site…</div>';
+  ob.findT = setTimeout(async () => {
+    let found = [];
+    try { found = await (await api('/api/university/find?q=' + encodeURIComponent(q))).json(); } catch { /* shown as not found */ }
+    if (seq !== ob.findSeq) return;
+    $('#obUniResults').innerHTML = found.map((u, i) => `<button class="ob-result${u.kind === 'canvas' ? ' off' : ''}" data-uni="${i}">
+        <span class="nm">${esc(u.name)}<div class="host">${esc(u.url.replace(/^https?:\/\//, ''))}</div></span>
+        <span class="kind">${u.kind === 'canvas' ? 'Canvas · coming soon' : KIND_NAMES[u.kind]}</span></button>`).join('')
+      || `<div class="muted">${looksLikeAddress ? "Couldn't find a Moodle or Blackboard site there." : 'No match yet. Try your uni email (e.g. you@uni.ac.uk), which finds most universities.'}</div>`;
+    ob.found = found;
+  }, looksLikeAddress ? 500 : 150);
+});
+$('#obUniResults').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-uni]');
+  if (!b) return;
+  const u = ob.found[+b.dataset.uni];
+  if (u.kind === 'canvas') return toast("Canvas isn't built in yet. For now, drop your PDFs onto SlideMate's window.", false, 6000);
+  obConnect(u.kind, u.url, u.name);
+});
+$('#obUniCant').onclick = () => { $('#obUniManual').hidden = false; $('#obUniUrl').focus(); };
+$('#obUniManual').addEventListener('click', (e) => {
+  const kind = e.target.closest('[data-manual]')?.dataset.manual;
+  if (!kind) return;
+  const url = $('#obUniUrl').value.trim();
+  if (!url) return toast(`Paste your ${KIND_NAMES[kind]} address first`, true);
+  obConnect(kind, url, null);
+});
+$('#obUniSkip').onclick = () => finishOnboarding(null);
+
+// ---- step 3: sign in to the university; the slides start arriving
+async function obConnect(kind, url, name) {
+  ob.uni = { kind, url, name };
+  await saveOnboarding();
+  obShow('connect');
+  $('#obConnTitle').textContent = `Sign in to ${name ? name.replace(/^The /, '') : KIND_NAMES[kind]}`;
+  $('#obConnErr').hidden = true;
+  setChecks('install');
+  const r = await post('/api/university/connect', { kind, url });
+  if (r.error) return obConnFail(r.error);
+  pollConnect();
+}
+function setChecks(active, detail = '') {
+  const order = ['install', 'signin', 'pull'];
+  document.querySelectorAll('#obChecks li').forEach((li) => {
+    const i = order.indexOf(li.dataset.check), a = order.indexOf(active);
+    li.className = i < a ? 'done' : i === a ? 'doing' : '';
+    li.querySelector('.detail')?.remove();
+    if (i === a && detail) li.insertAdjacentHTML('beforeend', `<span class="detail">${esc(detail)}</span>`);
+  });
+}
+async function pollConnect() {
+  clearTimeout(ob.connPoll);
+  let st;
+  try { st = (await (await api('/api/university')).json())[ob.uni.kind]; } catch { st = null; }
+  if (ob.step !== 'connect' || !st) return;
+  const step = st.step || '';
+  if (st.state === 'failed') return obConnFail(st.error);
+  if (st.state === 'done' || /pulling/i.test(step)) {
+    setChecks('pull');
+    return setTimeout(() => finishOnboarding(ob.uni), 1100);
+  }
+  if (/sign in/i.test(step)) setChecks('signin', '');
+  else setChecks('install', /download|install|updat/i.test(step) ? step.replace(/…$/, '') : '');
+  ob.connPoll = setTimeout(pollConnect, 1200);
+}
+function obConnFail(msg) {
+  document.querySelector('#obChecks li.doing')?.classList.replace('doing', 'failed');
+  const signIn = /sign-?in/i.test(msg || '');
+  $('#obConnErr').hidden = false;
+  $('#obConnErr').innerHTML = `<b>${signIn ? "Sign-in didn't finish." : "Couldn't set up the connection. Check your internet, then try again."}</b>
+    <details><summary>Details</summary><div class="small">${esc(msg || '')}</div></details>
+    <button class="small primary" id="obConnRetry">Try again</button>`;
+  $('#obConnRetry').onclick = () => obConnect(ob.uni.kind, ob.uni.url, ob.uni.name);
+}
+$('#obConnBack').onclick = () => { clearTimeout(ob.connPoll); obShow('uni'); };
+$('#obConnSkip').onclick = () => { clearTimeout(ob.connPoll); finishOnboarding(null); };
+
+async function saveOnboarding() {
+  if (cfg.setup_done && cfg.provider === ob.provider) return;
+  cfg = await post('/api/config', { provider: ob.provider, setup_done: true });
+}
+async function finishOnboarding(uni) {
+  clearTimeout(ob.poll); clearTimeout(ob.connPoll);
+  await saveOnboarding();
+  document.body.classList.remove('lib-hidden');  // the library is where the slides arrive
+  store.set('libHidden', false);
+  $('#onboard').classList.add('leaving');
+  setTimeout(() => { $('#onboard').hidden = true; document.body.classList.remove('onboarding'); }, 450);
+  loadModels();
+  await loadLibrary();
+  if (uni) watchUni();
+  else toast('Drop lecture PDFs onto the window and SlideMate files them into the right course.', false, 7000);
+}
+
 (async () => {
   cfg = await (await api('/api/config')).json();
   loadModels();
   loadCardsOverview();
   await loadLibrary();
-  if (!cfg.setup_done) openSettings(true);
+  if (!cfg.setup_done) openOnboarding();
   const params = new URLSearchParams(location.search);
   const file = params.get('file') || store.get('lastPath', null);
   if (file) openPdf(file, +params.get('page') || undefined);

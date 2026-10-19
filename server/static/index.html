@@ -232,12 +232,6 @@
         <button type="button" class="ghost icon" id="btnSettingsClose" title="Close (Esc)">✕</button>
       </header>
       <div class="set-body">
-        <div id="welcome" class="set-welcome" hidden>
-          <img class="logo big" src="logo.svg" alt="">
-          <div><b>Welcome to SlideMate</b>
-          <p>An AI tutor that has read the whole deck, one-click Send to iPad, and lecture recordings turned into notes. Two quick steps: choose the folder with your slides, then pick an AI tutor (free with a ChatGPT account).</p></div>
-        </div>
-
         <section class="pane" data-pane="general">
           <div class="set-group">
             <div class="set-row col">
@@ -400,13 +394,58 @@
           <div class="set-group" id="storage"></div>
         </section>
       </div>
-      <footer class="set-foot" id="setFoot" hidden>
-        <span class="muted small" id="setFootHint">You can change all of this later in Settings (⌘,).</span>
-        <button type="button" class="primary" id="btnSettingsSave">Get started</button>
-      </footer>
     </div>
   </form>
 </dialog>
+
+<div id="onboard" hidden>
+  <div class="ob-shell">
+    <header class="ob-top">
+      <img class="logo" src="logo.svg" alt="">
+      <ol class="ob-dots"><li data-dot="ai"></li><li data-dot="uni"></li><li data-dot="connect"></li></ol>
+    </header>
+
+    <section class="ob-step" data-step="ai">
+      <h1>Sign in to your AI</h1>
+      <p class="ob-sub">Your tutor runs on an AI account you already have. No API keys, nothing to configure.</p>
+      <div id="obAI" class="ob-tiles"></div>
+      <div id="obAIFlow" class="ob-flow" hidden></div>
+      <details class="ob-more" id="obMoreAI"><summary>More options</summary><div id="obAIMore" class="ob-tiles"></div></details>
+      <div class="ob-actions"><button class="primary big" id="obAINext" hidden>Continue</button></div>
+    </section>
+
+    <section class="ob-step" data-step="uni">
+      <h1>Where does your uni put its slides?</h1>
+      <p class="ob-sub">Find your university and SlideMate brings in every lecture for you, and keeps them up to date.</p>
+      <label class="ob-search"><svg><use href="#i-search"/></svg><input id="obUniQ" placeholder="University name, or your uni email" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
+      <div id="obUniResults" class="ob-results"></div>
+      <div id="obUniManual" class="ob-manual" hidden>
+        <p>Paste the address you use for your course pages, and pick which one it is:</p>
+        <input id="obUniUrl" class="set-input" placeholder="e.g. moodle.youruni.ac.uk" spellcheck="false" autocapitalize="off">
+        <div class="ob-row"><button data-manual="moodle">Moodle</button><button data-manual="blackboard">Blackboard</button></div>
+      </div>
+      <div class="ob-actions split">
+        <button class="ghost" id="obUniCant">I can't find my uni</button>
+        <button class="ghost" id="obUniSkip">Skip: I'll add PDFs myself</button>
+      </div>
+    </section>
+
+    <section class="ob-step" data-step="connect">
+      <h1 id="obConnTitle">Sign in to your university</h1>
+      <p class="ob-sub" id="obConnSub">A sign-in window opens. Use your normal university login, including the code on your phone.</p>
+      <ol class="ob-checks" id="obChecks">
+        <li data-check="install"><span class="mark"></span><span>Setting up the connection</span></li>
+        <li data-check="signin"><span class="mark"></span><span>Waiting for you to sign in</span></li>
+        <li data-check="pull"><span class="mark"></span><span>Bringing in your slides</span></li>
+      </ol>
+      <div id="obConnErr" class="ob-err" hidden></div>
+      <div class="ob-actions split">
+        <button class="ghost" id="obConnBack">Back</button>
+        <button class="ghost" id="obConnSkip">Skip for now</button>
+      </div>
+    </section>
+  </div>
+</div>
 
 <div id="hub" class="overlay" hidden></div>
 <div id="study" class="overlay" hidden></div>
