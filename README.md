@@ -118,26 +118,28 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 
 ## Quick start
 
-**Option A: download.** Grab `SlideMate-x.y.z-macOS.zip` from the
-[latest release](https://github.com/Mattlo0546/slidemate/releases/latest) and drag SlideMate into Applications
-(see the [first-launch note](#download)).
+1. Download **SlideMate-x.y.z-macOS.dmg** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest),
+   open it and drag SlideMate onto Applications (see the [first-launch note](#download)).
+2. **Sign in to your AI.** Pick Claude, ChatGPT or Gemini (free with a Google account). SlideMate installs it if
+   needed and opens your browser to sign in. No Terminal, no API keys.
+3. **Find your university.** Type its name or your uni email. SlideMate finds its Moodle or Blackboard, you sign in
+   once, and your lecture slides start appearing in the sidebar, sorted by course and week.
 
-**Option B: build it yourself** (it opens without any Gatekeeper prompts):
+That's it. Everything else (lecture recording, Send to iPad, flashcards) asks for permission the first time you use it.
+
+Prefer to build it yourself? It then opens without any Gatekeeper prompt:
 
 ```bash
 git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
 ```
 
-Either way you need one AI to tutor you: a Claude, ChatGPT, Cursor or Grok plan, a Google account (Gemini through
-Antigravity, free plan included), or a free model on your Mac with Ollama. The setup screen installs whichever you pick
-and signs you in with one click. Nothing else to install: SlideMate brings its own Python.
-
 ---
 
 ## Download
 
-Get **SlideMate-x.y.z-macOS.zip** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest).
-Unzip it and drag **SlideMate** into Applications. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
+Get **SlideMate-x.y.z-macOS.dmg** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest),
+open it and drag **SlideMate** onto **Applications**. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
+(Started it from Downloads instead? SlideMate offers to move itself to Applications.)
 
 The app isn't notarised by Apple yet, so the first time you open it macOS will block it:
 - **macOS 15 (Sequoia) and later:** try to open it, then go to System Settings → Privacy & Security, scroll down
@@ -150,7 +152,8 @@ version is out, so later updates open without the prompt. Choose SlideMate → *
 
 You'll also need:
 - **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
-  setup screen installs and signs in to any of them with one click (see the table below).
+  welcome screen installs whichever you pick and signs you in through your browser (see the table below for doing it
+  by hand).
 - **Lecture recording** needs an Apple Silicon Mac. SlideMate downloads speech-to-text (Parakeet, about 3 GB) by itself
   after setup.
 - **Optional:** `brew install poppler` for slide text with every provider except Claude.
@@ -167,8 +170,7 @@ scripts/install.sh
 ```
 
 The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app`,
-copies it to Applications and opens it. A setup screen asks for your slides folder (or creates one for you) and your
-AI provider. It shows whether each provider is installed and signed in, and has a **Sign in** button.
+copies it to Applications and opens it, at the same welcome screen as the download.
 
 Because the app is built on your Mac, it opens normally. If you instead download a prebuilt copy, macOS will ask you
 to right-click → Open the first time, since it isn't notarised.
@@ -198,8 +200,12 @@ Claude Code needs a paid Claude plan, but you don't need one to use SlideMate:
 
 ## How your files are organised
 
+Your slides live in SlideMate's own folder, `~/Library/Application Support/SlideMate/Slides`, so setup never asks
+where to put them (and iCloud never offloads them). Settings → Library → *Show in Finder* opens it, and you can add
+folders you already have there too.
+
 ```
-Uni/                      ← the folder you choose in setup
+Slides/                   ← SlideMate's folder, or any folder you add
 ├── Robotics/             ← each sub-folder is a course
 │   ├── Week 01/...pdf
 │   └── Lectures (SlideMate)/   ← lecture summaries, slide notes, transcripts (Markdown)
@@ -220,8 +226,10 @@ System Settings → Privacy & Security → Accessibility. Without it, you click 
 
 ## Your university (Canvas, Moodle, Blackboard, Google Classroom)
 
-Settings → **Your university** (also step 3 of the welcome screen): search for your university and press **Connect**,
-or open a connector, enter your site's address and press **Connect**:
+On the welcome screen, type your university's name or your uni email: SlideMate knows where about 80 universities
+keep their Canvas, Moodle or Blackboard, and for others it finds the site from your email's domain and checks what it
+runs. Later, Settings → **Your university** has the same search, plus each connector with its address and
+permissions:
 
 | Connector | For | Open-source MCP server |
 | --- | --- | --- |
@@ -236,6 +244,10 @@ your library, one folder per course. Later, the library's **Pull** button fetche
 check deadlines and announcements. Nothing needs Terminal, Homebrew or Apple's Command Line Tools. Each connector shows
 what it can do (everything is read-only) and has two switches: whether the tutor may use it, and whether it's the Pull
 button.
+
+Only what you study comes in: sites that aren't courses (guidance hubs, LSE Life, library skills, year-group
+noticeboards) are left out, and so are posters, handbooks, forms and timetables inside courses. After a Pull, the
+sidebar lists the sites it left out, with **Add** to bring one in.
 
 ## Other MCP connections
 
@@ -298,8 +310,9 @@ starts the server and shows the UI.
 | --- | --- |
 | Server, library, chats | `server/server.py`, `server/library.py` |
 | AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
+| Installing and signing in to an AI from the app | `server/ai_setup.py` |
 | MCP connections + client | `server/mcp.py` |
-| Your university (Canvas / Moodle / Blackboard / Google Classroom) | `server/university.py`, logos in `server/static/logos/` |
+| Your university (finding it; Canvas / Moodle / Blackboard / Google Classroom) | `server/university.py`, `server/static/universities.json`, logos in `server/static/logos/` |
 | Things SlideMate installs for itself (uv, Parakeet, ffmpeg) | `server/tools.py` |
 | Lecture recording → notes | `server/lecture.py` |
 | Flashcards + FSRS scheduling | `server/flashcards.py` |
@@ -315,7 +328,13 @@ scripts/dev.sh            # runs the server from source on http://127.0.0.1:8768
 scripts/build-app.sh      # builds build/SlideMate.app
 ```
 
-UI changes in `server/static/` only need a page refresh. `scripts/install.sh --build-only` runs the whole installer
+UI changes in `server/static/` only need a page refresh. To see the welcome screen again, run `scripts/dev.sh` with an
+empty `SLIDEMATE_DATA` folder.
+
+**Signed releases:** with an Apple Developer ID certificate in the repository's secrets (`DEVELOPER_ID_CERT_P12`,
+`DEVELOPER_ID_CERT_PASSWORD`, `DEVELOPER_ID_NAME`, plus `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` for
+notarisation), the release workflow signs and notarises the app and disk image (`scripts/notarize.sh`), so downloads
+open without the Gatekeeper prompt. `scripts/install.sh --build-only` runs the whole installer
 without touching /Applications.
 
 ## Uninstall
