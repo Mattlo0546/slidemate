@@ -120,10 +120,10 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 
 1. Download **SlideMate-x.y.z-macOS.dmg** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest),
    open it and drag SlideMate onto Applications (see the [first-launch note](#download)).
-2. **Sign in to your AI.** Pick Claude, ChatGPT or Gemini (free with a Google account). SlideMate installs it if
-   needed and opens your browser to sign in. No Terminal, no API keys.
-3. **Find your university.** Type its name or your uni email. SlideMate finds its Moodle or Blackboard, you sign in
-   once, and your lecture slides start appearing in the sidebar, sorted by course and week.
+2. **Sign in to your AI.** ChatGPT works with a free account; Claude, Gemini, Cursor and Grok work with their paid
+   plans. SlideMate installs it if needed and opens your browser to sign in. No Terminal, no API keys.
+3. **Find your university.** Type its name or your uni email. SlideMate finds its Canvas, Moodle or Blackboard, you
+   sign in once, and your lecture slides start appearing in the sidebar, sorted by course and week.
 
 That's it. Everything else (lecture recording, Send to iPad, flashcards) asks for permission the first time you use it.
 

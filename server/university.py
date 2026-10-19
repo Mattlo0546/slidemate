@@ -41,7 +41,8 @@ def site(url):
 
 # ------------------------------------------------------------------ finding the site
 
-DIRECTORY = json.loads((Path(__file__).parent / "universities.json").read_text())  # name, domain, kind, url
+# name, aka (other names), domain, kind, url; also the Settings search (static/universities.json)
+DIRECTORY = json.loads((Path(__file__).parent / "static" / "universities.json").read_text())
 # Where universities usually put their Moodle / Blackboard, tried in turn on the domain of an address or email.
 HOST_GUESSES = ["moodle", "vle", "learn", "blackboard", "ole", "www.ole", "learning", "elearning", "online",
                 "minerva", "keats", "bb", "mylearning", "study", "ultra", "canvas"]
@@ -68,7 +69,7 @@ def probe(base, timeout=6):
         return "moodle"
     if bb and '"learn"' in bb:
         return "blackboard"
-    if cv and "user authorization required" in cv:
+    if cv and re.search(r"user authori[sz]ation required", cv):
         return "canvas"
     return None
 
@@ -108,9 +109,9 @@ def find(query):
                 break
         return out
     words = [w for w in re.split(r"\W+", q.lower()) if w]
-    for u in DIRECTORY:
-        hay = (u["name"] + " " + u.get("aka", "") + " " + u["domain"]).lower()
-        if all(w in hay for w in words):
+    for u in DIRECTORY:  # every word typed starts a word of the name ("uni of bris", "kings", "mit" but not Goldsmiths)
+        hay = re.split(r"\W+", (u["name"] + " " + u.get("aka", "") + " " + u["domain"]).lower().replace("\u2019", ""))
+        if all(any(h.startswith(w) for h in hay) for w in words):
             out.append({"name": u["name"], "kind": u["kind"], "url": u["url"], "verified": False})
     return out[:8]
 

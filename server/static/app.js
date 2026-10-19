@@ -1419,27 +1419,15 @@ const CONNECTORS = {
 };
 const CAN_DO = ['Read your courses and course materials', 'See upcoming deadlines and whether you’ve submitted',
   'Read course announcements', 'Download lecture slides into your library'];
-// Checked to be on that platform (2026-10). Search matches the name and the extra words.
-const UNIS = [
-  ['University of Oxford', 'canvas', 'canvas.ox.ac.uk', 'oxon'], ['UCL (University College London)', 'moodle', 'moodle.ucl.ac.uk'],
-  ['King’s College London (KEATS)', 'moodle', 'keats.kcl.ac.uk', 'kcl kings'], ['LSE (London School of Economics)', 'moodle', 'moodle.lse.ac.uk'],
-  ['Imperial College London', 'blackboard', 'bb.imperial.ac.uk', 'icl'], ['University of Cambridge', 'moodle', 'www.vle.cam.ac.uk', 'cam'],
-  ['University of Edinburgh', 'blackboard', 'www.learn.ed.ac.uk'], ['University of Bristol', 'blackboard', 'www.ole.bris.ac.uk'],
-  ['University of Warwick', 'moodle', 'moodle.warwick.ac.uk'], ['Queen Mary University of London (QMplus)', 'moodle', 'qmplus.qmul.ac.uk', 'qmul'],
-  ['Royal Holloway, University of London', 'moodle', 'moodle.royalholloway.ac.uk', 'rhul'],
-  ['University of Birmingham', 'canvas', 'canvas.bham.ac.uk'], ['University of Liverpool', 'canvas', 'canvas.liverpool.ac.uk'],
-  ['University of Sussex', 'canvas', 'canvas.sussex.ac.uk'], ['University of Leeds (Minerva)', 'blackboard', 'minerva.leeds.ac.uk'],
-  ['University of Sheffield', 'blackboard', 'vle.shef.ac.uk'], ['University of Southampton', 'blackboard', 'blackboard.soton.ac.uk', 'soton'],
-  ['University of York (Yorkshare)', 'blackboard', 'vle.york.ac.uk'], ['University of Bath', 'moodle', 'moodle.bath.ac.uk'],
-  ['University of Nottingham', 'moodle', 'moodle.nottingham.ac.uk'], ['University of Glasgow', 'moodle', 'moodle.gla.ac.uk'],
-  ['University of Exeter', 'moodle', 'vle.exeter.ac.uk'], ['Loughborough University', 'moodle', 'learn.lboro.ac.uk', 'lboro'],
-  ['Harvard University', 'canvas', 'canvas.harvard.edu'], ['Stanford University', 'canvas', 'canvas.stanford.edu'],
-  ['MIT', 'canvas', 'canvas.mit.edu', 'massachusetts institute of technology'], ['UC Berkeley (bCourses)', 'canvas', 'bcourses.berkeley.edu', 'california'],
-  ['UC San Diego', 'canvas', 'canvas.ucsd.edu', 'california'], ['University of Michigan', 'canvas', 'umich.instructure.com'],
-  ['Columbia University (CourseWorks)', 'canvas', 'courseworks2.columbia.edu'], ['Carnegie Mellon University', 'canvas', 'canvas.cmu.edu', 'cmu'],
-  ['National University of Singapore', 'canvas', 'canvas.nus.edu.sg', 'nus'], ['University of Hong Kong', 'moodle', 'moodle.hku.hk', 'hku'],
-].map(([name, kind, host, alias = '']) => ({ name, kind, host, key: `${name} ${alias} ${host}`.toLowerCase().replace(/[’'()]/g, '') }));
-const POPULAR = ['canvas.ox.ac.uk', 'moodle.ucl.ac.uk', 'keats.kcl.ac.uk', 'moodle.lse.ac.uk', 'bb.imperial.ac.uk', 'www.vle.cam.ac.uk'];
+// Universities and where their Canvas / Moodle / Blackboard is (each checked by probing the site, 2026-10); the
+// welcome screen's search uses the same list (server/university.py). Every word typed starts a word of the name.
+let UNIS = [];
+const uniWords = (u) => `${u.name} ${u.aka} ${u.domain}`.toLowerCase().replace(/[’'()]/g, '').split(/\W+/);
+fetch('universities.json').then((r) => r.json()).then((list) => {
+  UNIS = list.map((u) => ({ ...u, host: u.url.replace(/^https?:\/\//, ''), words: uniWords(u) }));
+  if ($('#settings').open) renderUniSearch();
+});
+const POPULAR = ['ox.ac.uk', 'ucl.ac.uk', 'kcl.ac.uk', 'lse.ac.uk', 'imperial.ac.uk', 'cam.ac.uk'];  // by domain
 let uniOpen = null;           // the connector whose details are showing
 const uniAddr = {};           // address typed or picked per connector, before connecting
 const logo = (kind, cls = '') => `<img class="clogo ${cls}" src="logos/${kind}.svg" alt="">`;
@@ -1452,7 +1440,8 @@ function uniBadge(kind) {
 }
 function renderUniSearch() {
   const q = $('#uniSearch').value.trim().toLowerCase().replace(/[’'()]/g, '');
-  const hits = q ? UNIS.filter((u) => q.split(/\s+/).every((w) => u.key.includes(w))).slice(0, 6) : UNIS.filter((u) => POPULAR.includes(u.host));
+  const hits = q ? UNIS.filter((u) => q.split(/\s+/).every((w) => u.words.some((h) => h.startsWith(w)))).slice(0, 6)
+    : UNIS.filter((u) => POPULAR.includes(u.domain));
   const connected = (u) => uniSt[u.kind]?.connected && (uniSt[u.kind].url || '').replace(/^https?:\/\//, '') === u.host;
   $('#uniResults').innerHTML = hits.length ? hits.map((u) => `<button type="button" class="uni-hit" data-uni-host="${esc(u.host)}">
       ${logo(u.kind, 'sm')}<span class="body"><b>${esc(u.name)}</b><span>${CONNECTORS[u.kind].name} · ${esc(u.host)}</span></span>
@@ -2929,14 +2918,15 @@ window.addEventListener('keydown', (e) => {
 // =====================================================================================
 // Onboarding: first launch. Sign in to an AI, find your university, sign in to it, and the slides arrive.
 // =====================================================================================
+// Only ChatGPT works with a free account (see FREE_PROVIDERS), so it comes first; the others need a paid plan.
 const AI_TILES = [
-  { id: 'claude', name: 'Claude', what: 'Claude Pro or Max', bg: '#d97757', glyph: '✳' },
-  { id: 'codex', name: 'ChatGPT', what: 'Any ChatGPT plan, Free included', bg: '#10a37f', glyph: '◎' },
-  { id: 'antigravity', name: 'Gemini', what: 'Any Google account', bg: 'linear-gradient(135deg,#4285f4,#9b72cb,#d96570)', glyph: '✦', free: true },
+  { id: 'codex', name: 'ChatGPT', what: 'Works with a free ChatGPT account', bg: '#10a37f', glyph: '◎', free: true },
+  { id: 'claude', name: 'Claude', what: 'Needs Claude Pro or Max. Reads slides best.', bg: '#d97757', glyph: '✳' },
+  { id: 'antigravity', name: 'Gemini', what: 'Needs a Google AI plan', bg: 'linear-gradient(135deg,#4285f4,#9b72cb,#d96570)', glyph: '✦' },
 ];
 const AI_MORE = [
-  { id: 'cursor', name: 'Cursor', what: 'Your Cursor plan', bg: '#111', glyph: '▲' },
-  { id: 'grok', name: 'Grok', what: 'grok.com or SuperGrok', bg: '#111', glyph: '𝕏' },
+  { id: 'cursor', name: 'Cursor', what: 'Needs Cursor Pro', bg: '#111', glyph: '▲' },
+  { id: 'grok', name: 'Grok', what: 'Needs SuperGrok', bg: '#111', glyph: '𝕏' },
   { id: 'ollama', name: 'On this Mac', what: 'Free and offline (Ollama, ~6 GB). Simpler answers.', bg: '#777', glyph: '◐' },
 ];
 const ob = { step: 'ai', provider: null, aiJobs: {}, poll: null, uni: null, findT: null, findSeq: 0, connPoll: null };
@@ -3070,10 +3060,11 @@ $('#obUniQ').addEventListener('input', () => {
     let found = [];
     try { found = await (await api('/api/university/find?q=' + encodeURIComponent(q))).json(); } catch { /* shown as not found */ }
     if (seq !== ob.findSeq) return;
-    $('#obUniResults').innerHTML = found.map((u, i) => `<button class="ob-result${u.kind === 'canvas' ? ' off' : ''}" data-uni="${i}">
+    $('#obUniResults').innerHTML = found.map((u, i) => `<button class="ob-result" data-uni="${i}">
+        <img class="clogo sm" src="logos/${u.kind}.svg" alt="">
         <span class="nm">${esc(u.name)}<div class="host">${esc(u.url.replace(/^https?:\/\//, ''))}</div></span>
-        <span class="kind">${u.kind === 'canvas' ? 'Canvas · coming soon' : KIND_NAMES[u.kind]}</span></button>`).join('')
-      || `<div class="muted">${looksLikeAddress ? "Couldn't find a Moodle or Blackboard site there." : 'No match yet. Try your uni email (e.g. you@uni.ac.uk), which finds most universities.'}</div>`;
+        <span class="kind">${KIND_NAMES[u.kind]}</span></button>`).join('')
+      || `<div class="muted">${looksLikeAddress ? "Couldn't find a Canvas, Moodle or Blackboard site there." : 'No match yet. Try your uni email (e.g. you@uni.ac.uk), which finds most universities.'}</div>`;
     ob.found = found;
   }, looksLikeAddress ? 500 : 150);
 });
@@ -3081,7 +3072,6 @@ $('#obUniResults').addEventListener('click', (e) => {
   const b = e.target.closest('[data-uni]');
   if (!b) return;
   const u = ob.found[+b.dataset.uni];
-  if (u.kind === 'canvas') return toast("Canvas isn't built in yet. For now, drop your PDFs onto SlideMate's window.", false, 6000);
   obConnect(u.kind, u.url, u.name);
 });
 $('#obUniCant').onclick = () => { $('#obUniManual').hidden = false; $('#obUniUrl').focus(); };
@@ -3144,7 +3134,7 @@ $('#obConnSkip').onclick = () => { clearTimeout(ob.connPoll); finishOnboarding(n
 
 async function saveOnboarding() {
   if (cfg.setup_done && cfg.provider === ob.provider) return;
-  cfg = await post('/api/config', { provider: ob.provider, setup_done: true });
+  cfg = await post('/api/config', { provider: ob.provider, ai_plan: FREE_PROVIDERS.includes(ob.provider) ? 'free' : 'paid', setup_done: true });
 }
 async function finishOnboarding(uni) {
   clearTimeout(ob.poll); clearTimeout(ob.connPoll);

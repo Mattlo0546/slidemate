@@ -226,9 +226,9 @@ def install(name, wait=False):
 
 def update_connections():
     """At startup: a university connection installed by an older SlideMate is updated to the version this one pins
-    (e.g. one that skips posters and guidance sites), and its tool list re-read."""
+    (e.g. Moodle/Blackboard that skip posters and guidance sites), and its tool list re-read."""
     import mcp
-    for name in ("moodle", "blackboard"):
+    for name in ("canvas", "moodle", "blackboard", "classroom"):
         spec = (config.load().get("mcp_servers") or {}).get(name) or {}
         if str(spec.get("command", "")).startswith(str(BIN)) and not current(name):
             if install(name, wait=True).get("state") == "done":
