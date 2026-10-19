@@ -1139,7 +1139,10 @@ let sysStatus = null;
 const PROVIDER_NAMES = { claude: 'Claude', codex: 'ChatGPT', cursor: 'Cursor', grok: 'Grok', antigravity: 'Antigravity', ollama: 'Ollama' };
 // Providers whose model is picked from a list in Settings (the list comes from the CLI or app).
 const MODEL_FIELDS = { cursor: 'setCursorModel', grok: 'setGrokModel', antigravity: 'setAntigravityModel', ollama: 'setOllamaModel' };
-const providerLabel = () => PROVIDER_NAMES[cfg.provider] || 'Claude';
+const providerLabel = () => PROVIDER_NAMES[cfg.provider] || 'ChatGPT';
+// Only ChatGPT works with a free account; every other AI needs a paid plan, so a free user is shown ChatGPT alone.
+const FREE_PROVIDERS = ['codex'];
+const planProviders = () => (draft.ai_plan === 'paid' ? Object.keys(PROVIDER_NAMES) : FREE_PROVIDERS);
 async function refreshTrust() {
   $('#trustStatus').textContent = 'Checking auto-select…';
   const { trusted } = await (await api('/api/trust')).json();
@@ -1186,7 +1189,7 @@ function watchStatus() {
     }
     readModelFields();
     if (!providerReady(draft.provider)) {  // pick whichever AI just became ready
-      const ok = Object.keys(PROVIDER_NAMES).find(providerReady);
+      const ok = planProviders().find(providerReady);
       if (ok) { draft.provider = ok; saveSettings(); }
     }
     renderProviders();
@@ -1203,7 +1206,9 @@ function updateGate() {
 }
 function renderProviders() {
   const ps = sysStatus?.providers || {};
-  const card = (id, name, sub) => {
+  const free = draft.ai_plan !== 'paid';
+  document.querySelectorAll('#planSeg button').forEach((b) => b.classList.toggle('on', (b.dataset.plan === 'free') === free));
+  const card = (id, name, sub, tag) => {
     const s = ps[id] || {};
     const waiting = setupPending[id] && !(s.installed && s.logged_in);
     const state = waiting ? `<span class="pill-status"><span class="spinner"></span>Finish in the Terminal window…</span>`
@@ -1211,14 +1216,18 @@ function renderProviders() {
       : !s.logged_in ? `<span class="pill-status bad">${esc(s.not_ready || 'Not signed in')}</span><div class="acts"><button type="button" class="small primary" data-login="${id}">${esc(s.login_label || 'Sign in…')}</button></div>`
       : `<span class="pill-status ok">✓ Signed in${s.detail ? ' · ' + esc(s.detail) : ''}</span>`;
     return `<label class="pcard ${draft.provider === id ? 'on' : ''}"><input type="radio" name="prov" value="${id}" ${draft.provider === id ? 'checked' : ''}>
-      <div class="body"><b>${name}</b><div class="st">${sub}</div></div>${state}</label>`;
+      <div class="body"><b>${name}${tag ? `<span class="tag ${tag === 'Free' ? 'free' : ''}">${tag}</span>` : ''}</b><div class="st">${sub}</div></div>${state}</label>`;
   };
-  $('#providerCards').innerHTML = card('claude', 'Claude', 'Your Claude Pro or Max plan (via Claude Code). Reads slides natively.')
-    + card('codex', 'ChatGPT', 'Your ChatGPT plan (via the Codex app).')
-    + card('antigravity', 'Gemini (Antigravity)', 'Your Google account, free plan included. Gemini, plus Claude and GPT-OSS models.')
-    + card('cursor', 'Cursor', 'Your Cursor plan, with any model Cursor offers.')
-    + card('grok', 'Grok', 'Your grok.com / SuperGrok account.')
-    + card('ollama', 'On this Mac (Ollama)', 'Free and offline. Simpler answers; best with 16 GB of memory or more.');
+  $('#providerCards').classList.toggle('solo', free);
+  $('#providerCards').innerHTML = free
+    ? card('codex', 'ChatGPT', 'Works with a free ChatGPT account. Install it, sign in once in your browser, and you’re set.', 'Free')
+      + `<div class="plan-more">Paying for Claude, Gemini, Cursor or Grok? <button type="button" data-plan="paid">Use your paid plan instead</button></div>`
+    : card('codex', 'ChatGPT', 'A free or paid ChatGPT account.', 'Free')
+      + card('claude', 'Claude', 'Needs Claude Pro or Max. Reads slides best.', 'Paid plan')
+      + card('antigravity', 'Gemini', 'Needs a Google AI plan. Gemini, plus Claude and GPT-OSS models.', 'Paid plan')
+      + card('cursor', 'Cursor', 'Needs Cursor Pro, with any model Cursor offers.', 'Paid plan')
+      + card('grok', 'Grok', 'Needs SuperGrok.', 'Paid plan')
+      + card('ollama', 'On this Mac (Ollama)', 'Runs offline on your Mac. Simpler answers; needs 16 GB of memory or more.', 'Advanced');
   const pdfHint = draft.provider !== 'claude' && sysStatus && !sysStatus.pdftools
     ? `<div class="set-label" style="grid-column:1/-1"><span>${PROVIDER_NAMES[draft.provider]} reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>` : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
@@ -1251,6 +1260,15 @@ async function loadSetCat() {
   setCatLoading = false;
   if ($('#settings').open) { readModelFields(); renderProviders(); }
 }
+function setPlan(plan) {
+  if (draft.ai_plan === plan) return;
+  readModelFields();
+  draft.ai_plan = plan;
+  if (!planProviders().includes(draft.provider)) draft.provider = FREE_PROVIDERS[0];
+  renderProviders();
+  saveSettings();
+}
+$('#settings').addEventListener('click', (e) => { const b = e.target.closest('[data-plan]'); if (b) { e.preventDefault(); setPlan(b.dataset.plan); } });
 $('#providerCards').addEventListener('change', (e) => { if (e.target.name === 'prov') { readModelFields(); draft.provider = e.target.value; renderProviders(); } });
 $('#providerCards').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-login], [data-install]');
@@ -1307,6 +1325,7 @@ async function openSettings(firstRun = false, pane) {
   renderMcp();
   renderSyncMode();
   $('#setMd').checked = cfg.write_markdown;
+  document.querySelectorAll('#planSeg button').forEach((b) => b.classList.toggle('on', b.dataset.plan === (draft.ai_plan === 'paid' ? 'paid' : 'free')));
   $('#providerCards').innerHTML = '<div class="set-label"><span>Checking which AI apps are installed…</span></div>';
   if (!$('#settings').open) $('#settings').showModal();
   loadSetup();  // university cards + speech-to-text status (quick), while the AI apps are checked (slower)
@@ -1645,7 +1664,7 @@ function settingsPayload() {
   readModelFields();
   const mode = $('#setSyncMode').value;
   return {
-    library_roots: draft.library_roots, provider: draft.provider, claude_model: draft.claude_model,
+    library_roots: draft.library_roots, provider: draft.provider, ai_plan: draft.ai_plan, claude_model: draft.claude_model,
     claude_notes_model: draft.claude_notes_model, codex_model: draft.codex_model,
     cursor_model: draft.cursor_model, grok_model: draft.grok_model, antigravity_model: draft.antigravity_model,
     ollama_model: draft.ollama_model,

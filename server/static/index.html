@@ -235,7 +235,7 @@
         <div id="welcome" class="set-welcome" hidden>
           <img class="logo big" src="logo.svg" alt="">
           <div><b>Welcome to SlideMate</b>
-          <p>An AI tutor that has read the whole deck, one-click Send to iPad, and lecture recordings turned into notes. Two quick steps: choose the folder with your slides, then connect the AI you already pay for.</p></div>
+          <p>An AI tutor that has read the whole deck, one-click Send to iPad, and lecture recordings turned into notes. Two quick steps: choose the folder with your slides, then pick an AI tutor (free with a ChatGPT account).</p></div>
         </div>
 
         <section class="pane" data-pane="general">
@@ -260,7 +260,11 @@
         <section class="pane" data-pane="ai">
           <div class="set-group">
             <div class="set-row col">
-              <div class="set-label"><b>AI tutor</b><span>Pick one. It uses a plan or account you already have (or a free model on your Mac), so there are no API keys.</span></div>
+              <div class="set-label"><b>AI tutor</b><span>The AI that explains your slides. You just sign in with an account in your browser: no API keys, no coding.</span></div>
+              <div class="plan-q">
+                <span>Do you pay for an AI subscription?</span>
+                <div class="seg" id="planSeg"><button type="button" data-plan="free">No, use it free</button><button type="button" data-plan="paid">Yes, I have a paid plan</button></div>
+              </div>
               <div id="providerCards" class="pcards"></div>
             </div>
           </div>

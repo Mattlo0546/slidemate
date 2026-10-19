@@ -33,8 +33,9 @@ def which(name):
 DEFAULTS = {
     "setup_done": False,
     "library_roots": [],            # folders that hold your courses (each sub-folder = one course)
-    "provider": "claude",           # "claude" (Claude Code), "codex" (Codex CLI), "cursor" (Cursor CLI), "grok" (Grok CLI)
+    "provider": "codex",            # "claude" (Claude Code), "codex" (Codex CLI), "cursor" (Cursor CLI), "grok" (Grok CLI)
                                     # "antigravity" (Antigravity CLI) or "ollama" (a local model)
+    "ai_plan": "",                  # "free" (only ChatGPT is offered) or "paid"; blank = worked out from the provider
     "claude_model": "sonnet",
     "claude_notes_model": "opus",
     "claude_effort": "",            # "" = default, or low / medium / high / xhigh / max
@@ -71,6 +72,8 @@ def load():
         cfg.update(json.loads(CONFIG_PATH.read_text()))
     except Exception:
         pass
+    if cfg["ai_plan"] not in ("free", "paid"):  # set up before the free/paid choice existed
+        cfg["ai_plan"] = "free" if cfg["provider"] == "codex" else "paid"
     return cfg
 
 
