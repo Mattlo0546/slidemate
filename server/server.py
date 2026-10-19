@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import ai_setup
 import config
 import flashcards
 import lecture
@@ -294,6 +295,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(tools.status())
             if u.path == "/api/university":
                 return self._json(university.status())
+            if u.path == "/api/university/find":
+                return self._json(university.find(arg("q")))
+            if u.path == "/api/ai/setup":
+                return self._json(ai_setup.status())
             if u.path == "/api/status":
                 only = (urllib.parse.parse_qs(u.query).get("only") or [""])[0]
                 return self._json(status([n for n in only.split(",") if n]))
@@ -419,6 +424,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(tools.install(body.get("name", "")) if body.get("name") in tools.PACKAGES else {"error": "unknown"})
         if p == "/api/university/connect":
             return self._json(university.connect(body.get("kind", ""), body.get("url", "")))
+        if p == "/api/ai/setup":
+            return self._json(ai_setup.start(body.get("provider", "")))
+        if p == "/api/ai/code":
+            return self._json(ai_setup.submit_code(body.get("provider", ""), body.get("code", "")))
+        if p == "/api/ai/cancel":
+            ai_setup.cancel(body.get("provider", ""))
+            return self._json(ai_setup.status())
         if p == "/api/university/disconnect":
             return self._json(university.disconnect(body.get("kind", "")))
         if p == "/api/university/permissions":
@@ -474,6 +486,11 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/sync":
             lib.start_sync(login_first=bool(body.get("login")))
             return self._json(lib.sync_state())
+        if p == "/api/sync/courses":
+            try:
+                return self._json(lib.choose_courses(body.get("include") or [], body.get("exclude") or []))
+            except Exception as e:
+                return self._json({"error": str(e)[:300]})
         if p == "/api/sort-inbox":
             lib.sort_inbox()
             return self._json({"ok": True})
@@ -676,12 +693,14 @@ def main():
     import signal
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+    config.ensure_library()  # a new install keeps its slides in SlideMate's own folder, so setup never asks
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=watch_parent, daemon=True).start()
     lecture.ON_NOTES_DONE.append(flashcards.on_notes_done)
     threading.Timer(5, lecture.resume_unfinished).start()  # pick up lectures interrupted by a quit or crash
     threading.Timer(20, flashcards.catch_up).start()  # and flashcards that weren't made because the app quit
     threading.Timer(15, tools.auto).start()  # and lecture recording, if setup finished but it isn't installed yet
+    threading.Timer(25, tools.update_connections).start()  # and Moodle/Blackboard, when this version pins a newer one
     threading.Thread(target=lecture.watch_recordings, daemon=True).start()  # and recordings whose page went away
     try:
         mcp.repair_sync()  # a Pull set to a tool that can't sync (e.g. picked by accident) → one that can

@@ -15,6 +15,7 @@ CHATS = DATA / "chats"
 LECTURES = DATA / "lectures"
 CHAT_IMAGES = DATA / "chat-images"  # pictures the student attached to chat questions
 SNAPS = HOME / "Pictures" / "SlideMate"
+SLIDES = DATA / "Slides"      # the library of a new install: one folder per course (Settings → Library can add more)
 for d in (DATA, WORK, CHATS, LECTURES, CHAT_IMAGES):
     d.mkdir(parents=True, exist_ok=True)
 
@@ -95,6 +96,15 @@ def update(changes):
 
 def roots():
     return [Path(os.path.expanduser(r)) for r in load()["library_roots"] if r]
+
+
+def ensure_library():
+    """Before setup is done and while no slides folder is chosen, use SlideMate's own Slides folder. It's outside
+    Documents/Desktop, so macOS doesn't ask for folder access, and iCloud never offloads the PDFs."""
+    cfg = load()
+    if not cfg["library_roots"] and not cfg["setup_done"]:
+        SLIDES.mkdir(parents=True, exist_ok=True)
+        update({"library_roots": [str(SLIDES)]})
 
 
 def inbox():

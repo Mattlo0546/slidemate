@@ -33,9 +33,9 @@ PYTHON = "3.13"
 PACKAGES = {
     "parakeet": {"spec": "parakeet-mlx==0.5.3", "with": ["imageio-ffmpeg==0.6.0"], "exe": "parakeet-mlx",
                  "label": "speech-to-text"},
-    "moodle": {"spec": "moodle-mcp @ https://github.com/Mattlo0546/moodle-mcp/archive/refs/tags/v0.2.0.zip",
+    "moodle": {"spec": "moodle-mcp @ https://github.com/Mattlo0546/moodle-mcp/archive/refs/tags/v0.3.0.zip",
                "exe": "moodle-mcp", "label": "the Moodle connection"},
-    "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.1.0.zip",
+    "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.2.0.zip",
                    "exe": "blackboard-mcp", "label": "the Blackboard connection"},
     "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.1.1.zip",
                "exe": "canvas-mcp", "label": "the Canvas connection"},
@@ -58,6 +58,20 @@ def apple_silicon():
 
 def free_gb():
     return shutil.disk_usage(Path.home()).free / 1e9
+
+
+def _installed_specs():
+    try:
+        return json.loads((ROOT / "installed.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def current(name):
+    """Installed, and at the version this SlideMate pins (a connection installed by an older SlideMate isn't)."""
+    have = _installed_specs().get(name)
+    return (BIN / PACKAGES[name]["exe"]).exists() and (have == PACKAGES[name]["spec"] or
+                                                      (have is None and name == "parakeet"))
 
 
 def installed(name):
@@ -138,13 +152,16 @@ def _install(name, step):
     if name == "parakeet" and not apple_silicon():
         raise RuntimeError("Lecture recording needs a Mac with Apple Silicon (M1 or later).")
     uv = _uv(step)
-    if not (BIN / pkg["exe"]).exists():
-        step(f"Installing {pkg['label']}…")
+    if not current(name):
+        step(f"{'Updating' if (BIN / pkg['exe']).exists() else 'Installing'} {pkg['label']}…")
         cmd = [uv, "tool", "install", "--force", "--python", PYTHON, pkg["spec"]]
         for w in pkg.get("with", []):
             cmd += ["--with", w]
         _run(cmd, step, pkg["label"])
         _run([uv, "cache", "clean"], step, "the cleanup")  # the installed copies stay; frees a few hundred MB
+        specs = _installed_specs()
+        specs[name] = pkg["spec"]
+        (ROOT / "installed.json").write_text(json.dumps(specs, indent=1))
     if name == "parakeet":
         if not (BIN / "ffmpeg").exists():
             exe = _run([_venv_python(name), "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"],
@@ -205,6 +222,20 @@ def install(name, wait=False):
     if wait:
         t.join()
     return {k: v for k, v in job.items() if k != "thread"}
+
+
+def update_connections():
+    """At startup: a university connection installed by an older SlideMate is updated to the version this one pins
+    (e.g. one that skips posters and guidance sites), and its tool list re-read."""
+    import mcp
+    for name in ("moodle", "blackboard"):
+        spec = (config.load().get("mcp_servers") or {}).get(name) or {}
+        if str(spec.get("command", "")).startswith(str(BIN)) and not current(name):
+            if install(name, wait=True).get("state") == "done":
+                try:
+                    mcp.list_tools(name)
+                except Exception as e:  # noqa: BLE001 - the next Pull tries again
+                    print("tools: re-reading", name, e, flush=True)
 
 
 def auto():

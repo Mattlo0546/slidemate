@@ -6,7 +6,10 @@ library's Pull button, opens the sign-in window, then pulls your slides. No comm
 permissions (the tutor may use it; it's the Pull button) can be switched afterwards.
 """
 import json
+import re
 import threading
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -34,6 +37,82 @@ def site(url):
         url = "https://" + url
     p = urlparse(url)
     return f"{p.scheme}://{p.netloc}" if p.netloc and "." in p.netloc else ""
+
+
+# ------------------------------------------------------------------ finding the site
+
+DIRECTORY = json.loads((Path(__file__).parent / "universities.json").read_text())  # name, domain, kind, url
+# Where universities usually put their Moodle / Blackboard, tried in turn on the domain of an address or email.
+HOST_GUESSES = ["moodle", "vle", "learn", "blackboard", "ole", "www.ole", "learning", "elearning", "online",
+                "minerva", "keats", "bb", "mylearning", "study", "ultra", "canvas"]
+
+
+def probe(base, timeout=6):
+    """What a site runs, from answers it gives without signing in: "moodle", "blackboard", "canvas" or None."""
+    def get(path):
+        req = urllib.request.Request(base + path, headers={"User-Agent": "SlideMate (+https://github.com/Mattlo0546/slidemate)"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read(4000).decode(errors="replace")
+        except urllib.error.HTTPError as e:  # Moodle answers its web service with an error page: still a Moodle
+            try:
+                return e.read(4000).decode(errors="replace")
+            except Exception:
+                return ""
+        except Exception:
+            return None
+    with ThreadPoolExecutor(3) as pool:
+        mo, bb, cv = pool.map(get, ["/webservice/rest/server.php", "/learn/api/public/v1/system/version",
+                                    "/api/v1/courses"])
+    if mo and "moodle_exception" in mo:
+        return "moodle"
+    if bb and '"learn"' in bb:
+        return "blackboard"
+    if cv and "user authorization required" in cv:
+        return "canvas"
+    return None
+
+
+def _domain(text):
+    """'alex@student.lse.ac.uk' / 'https://moodle.lse.ac.uk/my' / 'lse.ac.uk' → 'lse.ac.uk'."""
+    text = text.strip().lower().split("@")[-1]
+    parts = urlparse(text if "://" in text else "https://" + text).netloc.split(":")[0].split(".")
+    n = 3 if len(parts) >= 3 and parts[-2] in ("ac", "edu", "co", "org") and len(parts[-1]) == 2 else 2
+    return ".".join(parts[-n:]) if len(parts) >= n else ""
+
+
+def find(query):
+    """Universities matching what the student typed (a name, an email or an address), each with its site checked.
+
+    Known names come from universities.json. An email or address is tried as is, then at the usual hosts on its
+    domain (moodle., vle., learn.…), so universities that aren't listed still work."""
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+    out = []
+    if "." in q or "@" in q:
+        base = site(q.split("@")[-1]) if "@" not in q else ""
+        dom = _domain(q)
+        label = dom.split(".")[0]
+        known = [u for u in DIRECTORY if u["domain"] == dom or dom.endswith("." + u["domain"])] or \
+            [u for u in DIRECTORY if len(label) >= 4 and label in re.split(r"\W+", (u["name"] + " " + u["aka"]).lower())]
+        cands = ([base] if base and "@" not in q else []) + [u["url"] for u in known] + \
+            [f"https://{h}.{dom}" for h in HOST_GUESSES if dom]
+        cands = list(dict.fromkeys(c for c in cands if c))
+        with ThreadPoolExecutor(8) as pool:
+            kinds = list(pool.map(lambda c: probe(c, timeout=5), cands))
+        name = known[0]["name"] if known else "Your university"
+        for c, k in zip(cands, kinds):
+            if k:
+                out.append({"name": name, "kind": k, "url": c, "verified": True})
+                break
+        return out
+    words = [w for w in re.split(r"\W+", q.lower()) if w]
+    for u in DIRECTORY:
+        hay = (u["name"] + " " + u.get("aka", "") + " " + u["domain"]).lower()
+        if all(w in hay for w in words):
+            out.append({"name": u["name"], "kind": u["kind"], "url": u["url"], "verified": False})
+    return out[:8]
 
 
 def _spec(kind):

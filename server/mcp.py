@@ -327,7 +327,7 @@ def _login_needed(d):
     return isinstance(d, dict) and (d.get("login_required") or (isinstance(d.get("report"), dict) and d["report"].get("login_required")))
 
 
-def run_sync(name, tool, log, timeout=3600):
+def run_sync(name, tool, log, timeout=3600, on_report=None):
     """Call a sync tool and follow it to completion.
 
     Long syncs often run in the background and return {"running": true, …}; then we keep the server
@@ -363,6 +363,8 @@ def run_sync(name, tool, log, timeout=3600):
             if re.search(r"\b40[134]\b.*(users/me|auth|session|login)|unauthori[sz]ed|LoginRequired", str(report["error"]), re.I):
                 return "login_required"
             return "error"
+        if isinstance(report, dict) and on_report:
+            on_report(report)
         if isinstance(report, dict) and report.get("summary"):
             log(str(report["summary"]))
         elif d is None:
@@ -379,6 +381,12 @@ def run_sync(name, tool, log, timeout=3600):
         return "error"
     finally:
         c.close()
+
+
+def courses_tool(name):
+    """The server's tool for choosing which courses a sync pulls (moodle_set_courses, bb_set_courses), if any."""
+    spec = (config.load().get("mcp_servers") or {}).get(name) or {}
+    return next((t for t in spec.get("tools") or [] if t.endswith("_set_courses")), None)
 
 
 def run_login(name, tool, log):

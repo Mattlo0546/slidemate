@@ -205,7 +205,7 @@ def set_entry(path, **fields):
 
 # ------------------------------------------------------------------ optional sync command
 
-_sync = {"running": False, "log": [], "result": None, "last": None}
+_sync = {"running": False, "log": [], "result": None, "last": None, "skipped": []}
 
 
 LOGIN_HINT = re.compile(r"not signed in|sign[- ]?in|log ?in|session (has )?expired|unauthori[sz]ed|401", re.I)
@@ -223,7 +223,27 @@ def sync_state():
             "has_login": bool(cfg["sync_login_command"].strip() or (m and m.get("login_tool"))),
             "via": f"{m['server']} › {m['tool']}" if m else (cfg["sync_command"].strip() or None),
             "label": f"Pull from {m['server'].replace('-', ' ').replace('_', ' ').title()}" if m else "Sync now",
-            "running": _sync["running"], "result": _sync["result"], "last": _sync["last"], "log": _sync["log"][-8:]}
+            "running": _sync["running"], "result": _sync["result"], "last": _sync["last"], "log": _sync["log"][-8:],
+            # sites the last pull left out because they aren't courses, and whether they can be brought back
+            "skipped": _sync["skipped"], "can_choose": bool(m and _courses_tool(m["server"]))}
+
+
+def _courses_tool(server):
+    import mcp
+    return mcp.courses_tool(server)
+
+
+def choose_courses(include=(), exclude=()):
+    """Bring back a site the pull skipped (or stop pulling a course), then pull again."""
+    import mcp
+    m = _sync_mcp()
+    tool = m and _courses_tool(m["server"])
+    if not tool:
+        return {"error": "This connection can't choose courses"}
+    mcp.call_tool(m["server"], tool, {"include": list(include), "exclude": list(exclude)}, timeout=120)
+    _sync["skipped"] = [s for s in _sync["skipped"] if str(s.get("id")) not in {str(i) for i in include}]
+    start_sync()
+    return sync_state()
 
 
 def _run_cmd(cmd, timeout):
@@ -252,11 +272,12 @@ def start_sync(login_first=False):
                 if login_first and m.get("login_tool") and not mcp.run_login(m["server"], m["login_tool"], log):
                     _sync["result"] = "login_failed"
                     return
-                result = mcp.run_sync(m["server"], m["tool"], log)
+                keep = lambda rep: _sync.update(skipped=rep.get("skipped_courses") or [])  # noqa: E731
+                result = mcp.run_sync(m["server"], m["tool"], log, on_report=keep)
                 if result == "login_required" and m.get("login_tool") and not login_first:
                     # Expired session: try the server's sign-in tool once (often refreshes silently), then retry.
                     if mcp.run_login(m["server"], m["login_tool"], log):
-                        result = mcp.run_sync(m["server"], m["tool"], log)
+                        result = mcp.run_sync(m["server"], m["tool"], log, on_report=keep)
                 _sync["result"] = result
                 _sync["last"] = time.time()
                 if result == "ok":
