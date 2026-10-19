@@ -3,6 +3,7 @@
 // On launch it starts `server/server.py` (bundled in Contents/Resources) with the system Python 3,
 // waits for it to answer, then shows the UI in a WKWebView. Quitting the app stops the server.
 import Cocoa
+import Darwin
 import UniformTypeIdentifiers
 import WebKit
 
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
+        if offerMoveToApplications() { return }  // relaunching from Applications
         let cfg = WKWebViewConfiguration()
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")  // right-click → Inspect Element
         cfg.userContentController.add(self, name: "slidemate")             // native helpers for the web UI
@@ -37,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         if !window.setFrameUsingName("SlideMateMain") { window.center() }
         window.setFrameAutosaveName("SlideMateMain")
         window.makeKeyAndOrderFront(nil)
-        showMessage("Starting SlideMate…")
+        showSplash()
 
         startServer { [weak self] ok, detail in
             guard let self = self else { return }
@@ -208,6 +210,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wait)
     }
 
+    /// The logo while the server starts (usually under a second), so the first thing anyone sees isn't a blank window.
+    func showSplash() {
+        let logo = (try? String(contentsOf: Bundle.main.resourceURL!.appendingPathComponent("server/static/logo.svg"), encoding: .utf8)) ?? ""
+        web.loadHTMLString("""
+        <html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:transparent">
+        <div style="width:64px;height:64px;animation:p 1.6s ease-in-out infinite">\(logo)</div>
+        <style>svg{width:64px;height:64px}@keyframes p{50%{opacity:.55;transform:scale(.96)}}</style></body></html>
+        """, baseURL: nil)
+    }
+
     func showMessage(_ title: String, detail: String = "", note: String = "") {
         let esc = { (s: String) in s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;") }
         let noteHTML = note.isEmpty ? "" : "<p style='line-height:1.5'>\(note)</p>"
@@ -217,6 +229,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         <pre style="text-align:left;white-space:pre-wrap;font:11px Menlo;color:#888">\(esc(detail))</pre></div></body></html>
         """
         web.loadHTMLString(html, baseURL: nil)
+    }
+
+    // MARK: move to Applications
+    //
+    // A downloaded SlideMate often starts from Downloads (or from the disk image). macOS then runs it from a
+    // temporary read-only copy ("App Translocation"), where it can't update itself. Like most Mac apps, offer to
+    // move it to Applications once, then relaunch from there, without the download's quarantine flag, so macOS
+    // doesn't ask again.
+
+    /// Returns true when SlideMate is relaunching from Applications (so this copy should do nothing else).
+    func offerMoveToApplications() -> Bool {
+        let fm = FileManager.default
+        let here = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        let home = fm.homeDirectoryForCurrentUser.path
+        let inApps = ["/Applications/", home + "/Applications/"].contains { here.path.hasPrefix($0) }
+        let translocated = here.path.contains("/AppTranslocation/")
+        let original = translocated ? (Self.originalURL(of: here) ?? here) : here
+        guard !inApps, here.pathExtension == "app", !UserDefaults.standard.bool(forKey: "neverMoveToApplications"),
+              ProcessInfo.processInfo.environment["SLIDEMATE_SERVER"] == nil,
+              !original.path.contains("/build/"), !original.path.contains("/DerivedData/") else { return false }
+
+        let alert = NSAlert()
+        alert.messageText = "Move SlideMate to your Applications folder?"
+        alert.informativeText = "SlideMate keeps itself up to date from there, and you'll find it in Launchpad and Spotlight."
+        alert.addButton(withTitle: "Move to Applications")
+        alert.addButton(withTitle: "Not Now")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        NSApp.activate(ignoringOtherApps: true)
+        let answer = alert.runModal()
+        if alert.suppressionButton?.state == .on { UserDefaults.standard.set(true, forKey: "neverMoveToApplications") }
+        guard answer == .alertFirstButtonReturn else { return false }
+
+        var apps = URL(fileURLWithPath: "/Applications")
+        if !fm.isWritableFile(atPath: apps.path) {
+            apps = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
+            try? fm.createDirectory(at: apps, withIntermediateDirectories: true)
+        }
+        let dest = apps.appendingPathComponent("SlideMate.app")
+        do {
+            if fm.fileExists(atPath: dest.path) { try fm.trashItem(at: dest, resultingItemURL: nil) }  // an older copy
+            try fm.copyItem(at: here, to: dest)
+        } catch {
+            let a = NSAlert()
+            a.messageText = "SlideMate couldn't move itself"
+            a.informativeText = "Drag SlideMate into your Applications folder in Finder instead.\n\n\(error.localizedDescription)"
+            a.runModal()
+            return false
+        }
+        // The copy is ours now: no quarantine flag means no "downloaded from the internet" prompt from Applications.
+        let x = Process()
+        x.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        x.arguments = ["-dr", "com.apple.quarantine", dest.path]
+        try? x.run(); x.waitUntilExit()
+        // Tidy up the copy in Downloads (not a disk image, which is read-only, or anything we can't write).
+        if fm.isWritableFile(atPath: original.deletingLastPathComponent().path), !original.path.hasPrefix("/Volumes/") {
+            try? fm.trashItem(at: original, resultingItemURL: nil)
+        }
+        let open = Process()
+        open.executableURL = URL(fileURLWithPath: "/bin/sh")
+        open.arguments = ["-c", "sleep 0.7; /usr/bin/open \"$0\"", dest.path]
+        try? open.run()
+        NSApp.terminate(nil)
+        return true
+    }
+
+    /// Where a translocated app really is (Security's SecTranslocateCreateOriginalPathForURL, looked up at runtime).
+    static func originalURL(of url: URL) -> URL? {
+        guard let h = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY),
+              let sym = dlsym(h, "SecTranslocateCreateOriginalPathForURL") else { return nil }
+        typealias Fn = @convention(c) (CFURL, UnsafeMutablePointer<Unmanaged<CFError>?>?) -> Unmanaged<CFURL>?
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        return fn(url as CFURL, nil)?.takeRetainedValue() as URL?
     }
 
     // MARK: web view behaviour

@@ -2,7 +2,10 @@
 # Build SlideMate.app (native window + bundled server + AirDrop helper).
 #   scripts/build-app.sh            → build/SlideMate.app
 #   scripts/build-app.sh --install  → also copy it to /Applications (or ~/Applications)
-#   scripts/build-app.sh --zip      → also make dist/SlideMate-<version>-macOS.zip (what GitHub Releases ship)
+#   scripts/build-app.sh --zip      → also make dist/SlideMate-<version>-macOS.zip (the in-app updater's download)
+#                                     and dist/SlideMate-<version>-macOS.dmg (drag-to-Applications, for new users)
+# With SLIDEMATE_SIGN_ID set (a "Developer ID Application" identity), it signs for Gatekeeper and, with the notary
+# credentials too, notarises (scripts/notarize.sh): then the download opens with no "Open Anyway" step.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
@@ -133,16 +136,32 @@ if [ -f "$TMP/icon.svg.png" ]; then
 fi
 rm -rf "$TMP"
 
-echo "• Signing (ad-hoc)…"
-codesign -s - --force "$APP" >/dev/null 2>&1   # not --deep: the helper keeps its own (stable) signature
+if [ -n "${SLIDEMATE_SIGN_ID:-}" ]; then
+  scripts/notarize.sh sign "$APP"
+else
+  echo "• Signing (ad-hoc)…"
+  codesign -s - --force "$APP" >/dev/null 2>&1   # not --deep: the helper keeps its own (stable) signature
+fi
 echo "✓ Built $APP"
 
 if [ "${1:-}" = "--zip" ]; then
   mkdir -p "$ROOT/dist"
   ZIP="$ROOT/dist/SlideMate-$VERSION-macOS.zip"
   rm -f "$ZIP"
+  [ -n "${SLIDEMATE_SIGN_ID:-}" ] && [ -n "${APPLE_ID:-}" ] && scripts/notarize.sh notarize "$APP"
   ditto -c -k --keepParent "$APP" "$ZIP"
   echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
+  # A disk image with SlideMate next to an Applications shortcut: drag one onto the other.
+  DMG="$ROOT/dist/SlideMate-$VERSION-macOS.dmg"
+  STAGE=$(mktemp -d)
+  ditto "$APP" "$STAGE/SlideMate.app"
+  ln -s /Applications "$STAGE/Applications"
+  rm -f "$DMG"
+  hdiutil create -quiet -volname "SlideMate" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+  rm -rf "$STAGE"
+  [ -n "${SLIDEMATE_SIGN_ID:-}" ] && codesign -s "$SLIDEMATE_SIGN_ID" --timestamp "$DMG"
+  [ -n "${SLIDEMATE_SIGN_ID:-}" ] && [ -n "${APPLE_ID:-}" ] && scripts/notarize.sh notarize "$DMG"
+  echo "✓ $DMG ($(du -h "$DMG" | cut -f1))"
 fi
 
 if [ "${1:-}" = "--install" ]; then

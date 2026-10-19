@@ -8,11 +8,32 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
+    env:
+      HAS_CERT: ${{ secrets.DEVELOPER_ID_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Set version from tag
         run: echo "${GITHUB_REF_NAME#v}" > VERSION
-      - name: Build universal app + zip
+      # Optional: with an Apple Developer ID certificate in the repo's secrets, the download is signed and notarised
+      # and opens with no Gatekeeper prompt. Without the secrets, it's ad-hoc signed as before.
+      - name: Import signing certificate
+        if: env.HAS_CERT == 'true'
+        env:
+          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"; KP="$(uuidgen)"
+          security create-keychain -p "$KP" "$KC" && security set-keychain-settings -lut 3600 "$KC" && security unlock-keychain -p "$KP" "$KC"
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KP" "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+      - name: Build universal app, zip and disk image
+        env:
+          SLIDEMATE_SIGN_ID: ${{ secrets.DEVELOPER_ID_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: scripts/build-app.sh --zip
       - name: Publish release
         env:
@@ -20,5 +41,5 @@ jobs:
         run: |
           NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
           [ -f "$NOTES" ] || NOTES=/dev/null
-          gh release create "$GITHUB_REF_NAME" dist/SlideMate-*-macOS.zip \
+          gh release create "$GITHUB_REF_NAME" dist/SlideMate-*-macOS.zip dist/SlideMate-*-macOS.dmg \
             --title "SlideMate ${GITHUB_REF_NAME}" --notes-file "$NOTES" --generate-notes

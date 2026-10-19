@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened-runtime exceptions SlideMate needs when it's Developer ID signed (scripts/notarize.sh). -->
+<plist version="1.0"><dict>
+  <!-- Lecture recording: the microphone, only when you press Record. -->
+  <key>com.apple.security.device.audio-input</key><true/>
+  <!-- The bundled Python loads its own compiled modules. -->
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+</dict></plist>
