@@ -37,7 +37,7 @@ PACKAGES = {
                "exe": "moodle-mcp", "label": "the Moodle connection"},
     "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.2.0.zip",
                    "exe": "blackboard-mcp", "label": "the Blackboard connection"},
-    "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.1.1.zip",
+    "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.2.0.zip",
                "exe": "canvas-mcp", "label": "the Canvas connection"},
     "classroom": {"spec": "classroom-mcp @ https://github.com/Mattlo0546/classroom-mcp/archive/refs/tags/v0.2.0.zip",
                   "exe": "classroom-mcp", "label": "the Google Classroom connection"},
