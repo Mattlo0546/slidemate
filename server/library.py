@@ -48,6 +48,15 @@ def week_of(rel):
     return int(m.group(1)) if m else None
 
 
+def lecture_title(title, week):
+    """'Symbol Grounding' + 5 → 'Week 5 Slides - Symbol Grounding', so every lecture reads the same
+    whether or not the AI kept a week prefix."""
+    if week is None:
+        return title
+    topic = re.sub(r"^\s*(?:week|wk|w)\s*0*\d{1,2}\b\s*(?:slides?|lecture)?\s*[-–:]?\s*", "", title, flags=re.I).strip()
+    return f"Week {week} Slides - {topic}" if topic else f"Week {week} Slides"
+
+
 def course_dirs():
     out = []
     for root in config.roots():
@@ -188,8 +197,11 @@ Answer ONLY with JSON: {{"files": [{{"id": 0, "category": "...", "title": "...",
             if e.get("source") == "manual":
                 continue
             wk = r.get("week") if isinstance(r.get("week"), int) else i["week"]
-            lib[i["path"]] = {**e, "category": r.get("category") if r.get("category") in CATEGORIES else "Other",
-                              "title": (r.get("title") or i["title"])[:120], "week": wk, "source": "auto"}
+            cat = r.get("category") if r.get("category") in CATEGORIES else "Other"
+            title = r.get("title") or i["title"]
+            if cat == "Lectures":
+                title = lecture_title(title, wk)
+            lib[i["path"]] = {**e, "category": cat, "title": title[:120], "week": wk, "source": "auto"}
         _save(LIB_PATH, lib)
 
 
