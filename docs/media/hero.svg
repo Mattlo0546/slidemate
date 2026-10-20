@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" role="img" aria-labelledby="title desc">
+<title id="title">SlideMate. Less study admin. More understanding.</title><desc id="desc">Your slides, AI tutor, lecture notes and flashcards in one Mac app. A white square mascot with two black eyes.</desc>
+<rect width="1280" height="560" rx="28" fill="#14243d"/>
+<path d="M0 460 H1280" stroke="#34445c"/>
+<g font-family="Arial, Helvetica, sans-serif">
+<text x="64" y="77" fill="#fff" font-size="27" font-weight="700" letter-spacing="-1">SlideMate</text>
+<text x="64" y="150" fill="#b4c7eb" font-size="15" letter-spacing="2.5">YOUR WHOLE STUDY DAY. ONE MAC APP.</text>
+<text x="60" y="232" fill="#fff" font-size="66" font-weight="700" letter-spacing="-2.7">Less study admin.</text>
+<text x="60" y="309" fill="#b7d7ff" font-size="66" font-weight="700" letter-spacing="-2.7">More understanding.</text>
+<text x="64" y="370" fill="#d4deef" font-size="23">Slides, a tutor, lecture notes and flashcards.</text>
+<text x="64" y="405" fill="#d4deef" font-size="23">All the little things, already connected.</text>
+<text x="64" y="516" fill="#fff" font-size="18" font-weight="700">Free &amp; open source</text>
+<text x="350" y="516" fill="#b4c7eb" font-size="18">Built for macOS</text>
+<text x="624" y="516" fill="#b4c7eb" font-size="18">Bring your AI account</text>
+<text x="985" y="516" fill="#b4c7eb" font-size="18">Make it click.</text>
+</g>
+<g transform="translate(884 100) scale(.30)"><rect x="80" y="80" width="864" height="864" rx="190" fill="#fff"/>
+<rect x="348" y="386" width="104" height="252" rx="52" fill="#000"/>
+<rect x="572" y="386" width="104" height="252" rx="52" fill="#000"/></g>
+</svg>

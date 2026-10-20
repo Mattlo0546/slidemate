@@ -1,167 +1,186 @@
-<div align="center">
+<p align="center">
+  <img src="docs/media/hero.svg" width="100%" alt="SlideMate. Less study admin. More understanding. Your slides, AI tutor, lecture notes and flashcards in one Mac app.">
+</p>
 
-<img src="server/static/logo.svg" width="88" alt="SlideMate logo">
+<h1 align="center">SlideMate — your all-in-one AI study app for Mac</h1>
 
-# SlideMate
+<p align="center">
+  <strong>From the university dashboard to the exam. One place to study.</strong><br>
+  Pull your slides. Ask your tutor. Send to iPad. Turn lectures into revision.
+</p>
 
-**Study your lecture slides with an AI tutor that has read the whole deck.**
+<p align="center">
+  <a href="https://github.com/Mattlo0546/slidemate/releases/latest"><img src="https://img.shields.io/github/v/release/Mattlo0546/slidemate?style=flat-square&amp;label=Download%20for%20Mac&amp;color=4469f5" alt="Download the latest SlideMate release"></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B-20242b?style=flat-square&amp;logo=apple" alt="macOS 13 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Free%20%26%20open%20source-MIT-20242b?style=flat-square" alt="Free and open source, MIT license"></a>
+</p>
 
-Explain any slide in context · Snip it to your iPad in one click · Turn the lecture into notes for every slide
+<p align="center">
+  <a href="#a-study-day-with-slidemate">Explore the features</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#architecture">See the architecture</a> ·
+  <a href="#questions-students-ask">FAQ</a>
+</p>
 
-[![Latest release](https://img.shields.io/github/v/release/Mattlo0546/slidemate?label=download&color=5b6cff)](https://github.com/Mattlo0546/slidemate/releases/latest) ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111?logo=apple) ![Claude or ChatGPT](https://img.shields.io/badge/AI-Claude%20%7C%20ChatGPT-8b5cf6) [![MIT license](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
+**SlideMate is a free, open-source macOS study app that brings an AI slide tutor, university slide downloads, one-click AirDrop to iPad, lecture transcription, and spaced-repetition flashcards into one workflow.** The tutor uses the lecture deck, the slide in front of you, and available lecture notes to explain what you are studying. Sign in with a supported AI account—there is **no additional SlideMate subscription or API key to buy**. Your provider's access rules and usage limits still apply; a local Ollama model is another option.
 
-<img src="docs/media/explain.gif" width="900" alt="Right-click a slide, choose Explain, and the tutor answers with links to other slides">
+The point is convenience: fewer downloads to organise, fewer windows to juggle, and less work turning a lecture into something you can revise.
 
-</div>
+<p align="center">
+  <img src="docs/media/explain.gif" width="960" alt="SlideMate demo: a lecture PDF beside the AI tutor, explaining the selected slide with links to related slides.">
+</p>
 
-**SlideMate is a free, open-source Mac app that explains lecture slides with AI.** It works with your Claude or ChatGPT account, or for free with a
-Google account or a model running on your Mac.
-
-Lecture PDFs are terse: a few bullets, a diagram, an equation. Pasting slides into a chatbot one at a time
-loses the thread. **SlideMate** is a PDF viewer for lecture decks with a tutor that has read every slide and
-the lecture itself (if you recorded it). Ask about the slide you're on, and the answer explains how it connects to the rest of
-the course.
-
-It runs locally on your Mac and uses the AI you already pay for: **Claude** (via Claude Code), **ChatGPT**
-(via Codex), **Cursor** (via the Cursor CLI, with any model your Cursor plan offers) or **Grok** (via the Grok CLI).
-No subscription? Use **Antigravity** (Google's CLI, free with a Google account) or a model that runs on your Mac with
-**Ollama** ([free options](#using-it-for-free)). No API keys, no account, no server.
-
-## What it does
-
-### 🧠 A tutor that knows the whole deck
-Right-click → **Explain this slide** (or press <kbd>E</kbd>), or ask anything. Answers draw on the entire deck and on what
-your lecturer actually said. Slide references like "slide 4" are links: hover to preview, click to jump.
+## A study day with SlideMate
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 📲 Snip → iPad in one click
-Drag over any part of a slide, or over the chat to grab the tutor's notes, and **Send to iPad**. It goes by AirDrop (SlideMate can pick your iPad for you) and is
-copied to your clipboard, ready for GoodNotes or Notability.
+### Before class: your slides, already organised
+Connect **Moodle, Blackboard, Canvas or Google Classroom**. SlideMate pulls course materials into your library and groups PDFs by **course, type and week**. After setup, **Pull** fetches new materials. You can also drop in your own PDFs.
+
+Less time navigating the university dashboard. More time getting started.
 
 </td>
 <td width="50%" valign="top">
 
-### 🎙️ Lecture → notes for every slide
-Hit **Record** in class. SlideMate transcribes on-device with NVIDIA Parakeet (downloaded for you after setup on Apple
-Silicon Macs), tracks which slide you were on, and writes
-a summary (key ideas, to-dos, deadlines, exam tips) plus **notes for each slide with the lecturer's exact words**.
+### In class: straight to your iPad
+Send a whole slide, a snip, or part of a tutor answer to your iPad through **AirDrop**. Set your iPad's name once and enable auto-select to skip hunting through a room full of devices. Clipboard copy also works with Universal Clipboard.
+
+Ready for your **Goodnotes or Notability** workflow.
 
 </td>
 </tr>
 <tr>
-<td valign="top"><img src="docs/media/snip.gif" alt="Snip part of a slide and send it to an iPad"></td>
-<td valign="top"><img src="docs/media/notes.gif" alt="Lecture notes for each slide"></td>
+<td valign="top"><img src="docs/media/library.gif" alt="Course library organised by subject, material type and week."></td>
+<td valign="top"><img src="docs/media/snip.gif" alt="Snip a diagram from a lecture slide and send it to an iPad; the demo illustrates the destination."></td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### 🔍 Pinch, zoom, search
-Pinch to zoom around the cursor, like Photoshop. <kbd>⌘F</kbd> searches the text of every slide, and you can select
-and copy straight from the PDF.
+### When something doesn't click: ask
+Press **E** to explain the current slide, or ask your own question. The tutor gets deck context and knows which slide you mean. Answers link back to slides. Attach a photo of handwritten notes, follow up, and revisit the conversation beside the same slide later.
+
+Your existing AI account, right inside your study space.
 
 </td>
 <td width="50%" valign="top">
 
-### 📚 Your courses, sorted
-Point SlideMate at your uni folder. It sorts every PDF by **course → Lectures / Labs / Readings → week**, without moving
-a single file. PDFs dropped onto the window get filed into the right course.
+### After class: the lecture becomes notes
+Record a lecture, tutorial or seminar on your Mac. **On-device Parakeet transcription** turns the audio into text; your selected AI writes a summary and notes for the slides discussed, with transcript quotes. Already have a transcript? Import it, including timed lecture-capture captions.
+
+The explanations between the bullet points stay with the deck.
 
 </td>
 </tr>
 <tr>
-<td valign="top"><img src="docs/media/zoom.gif" alt="Pinch to zoom and search"></td>
-<td valign="top"><img src="docs/media/library.gif" alt="Library sorted by course, type and week"></td>
+<td width="50%" valign="top">
+
+### Before the exam: revise what challenged you
+Flashcards draw on the **slides, lecture notes and questions you asked the tutor**. Cards are grouped by subtopic, with exam hints and source slides. **FSRS spaced repetition** schedules reviews across courses. Export Basic and Cloze cards to Anki when you want.
+
+Your revision follows what you actually needed help with.
+
+</td>
+<td width="50%" valign="top">
+
+### Throughout: a proper slide workspace
+Search the deck with **⌘F**, pinch to zoom, select PDF text, and keep chats beside the relevant slide. Chats, notes and cards can be written as **Markdown** alongside your materials.
+
+Your library and study history live on your Mac.
+
+</td>
 </tr>
 </table>
 
-### 🃏 Flashcards that know what was hard
-After each lecture, SlideMate writes active-recall flashcards for it, split by subtopic. They come from the slides and
-from **what the lecturer said**, so anything flagged as examinable is marked ⭐. They also come from **the questions you
-asked the tutor**: what you struggled with gets its own card. When you've been revising a deck in the chat, new cards
-are added for the bits you asked about.
+<details>
+<summary><strong>Watch lecture notes and the PDF viewer</strong></summary>
 
-Review with spaced repetition. **FSRS**, the scheduler Anki uses, brings each card back just before you'd forget it.
-"Study everything due" mixes your courses, and the back of each card shows the slide it came from. Cards adapt to the
-subject: arguments and objections for philosophy, mechanisms and trade-offs for engineering, formulas, derivation
-steps and short problems for maths. Press <kbd>R</kbd> to review, and export any deck to Anki.
+| Notes linked to slides | Zoom and search |
+| --- | --- |
+| ![Lecture notes with transcript quotes beside each slide](docs/media/notes.gif) | ![Pinch to zoom and search within the PDF viewer](docs/media/zoom.gif) |
 
-### And also
-- **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
-  (handy for Obsidian).
-- **Your university, built in**: search for your university (Oxford, UCL, King's, LSE, Imperial, Cambridge and 30
-  more) and connect it in one click, or pick Canvas, Moodle, Blackboard or Google Classroom from the connector
-  directory (Settings → Your university). A **Pull** button brings in new slides, and the tutor can check deadlines
-  and announcements mid-answer. Any other MCP server goes under Advanced.
-- **Model and effort picker**, plus a usage ring showing how much of your plan you've used, just like in Claude.
-- **Updates itself**: when a new release is out, SlideMate offers to install it and relaunch (or SlideMate → Check for
-  Updates…).
-- **Private by design**: everything stays on your Mac. The only thing sent anywhere is your question to the AI provider you
-  chose (plus a daily check of GitHub for a new release, which sends nothing about you).
+The demos use an original sample lecture. Tutor answers were generated with Claude. Thinking time is shortened; the AirDrop destination in the snipping demo is illustrated. [Demo production notes](docs/demo/README.md).
 
-> The demo above uses an original sample lecture made for SlideMate. Answers are real, generated live by Claude.
+</details>
 
-## SlideMate vs. pasting slides into a chatbot
+## Get started
 
-| | SlideMate | ChatGPT / Claude chat | NotebookLM-style tools |
-| --- | --- | --- | --- |
-| Knows the whole deck | Yes, every slide | Only what you paste | Yes |
-| Knows which slide you're on | Yes | No | No: you chat with the whole source |
-| Uses what the lecturer said | Yes, from your recording | No | If you upload a transcript |
-| Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
-| Chats saved per slide | Yes | One long chat | One notebook chat |
-| Flashcards from the lecture + your questions | Yes, spaced repetition (FSRS) | No | Generic flashcards |
-| Where it runs | On your Mac (open source) | Web | Web |
-| Cost | Free; uses your existing AI plan, a free Google account, or a model on your Mac | Your plan | Varies |
+1. **Download SlideMate** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest). Open the ZIP or DMG supplied with that release and move SlideMate to Applications.
+2. **Choose your AI and sign in.** The welcome flow helps install and connect supported providers. You do not need a separate SlideMate account.
+3. **Connect your university or open a PDF.** Let SlideMate pull and organise your course materials, then open a slide and start asking questions.
 
-## Quick start
+**Requirements:** macOS 13 or later, on Apple Silicon or Intel. Local audio transcription requires **Apple Silicon** and the Parakeet model download. iPad auto-select requires the AirDrop helper's Accessibility permission and your device name.
 
-1. Download **SlideMate-x.y.z-macOS.dmg** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest),
-   open it and drag SlideMate onto Applications (see the [first-launch note](#download)).
-2. **Sign in to your AI.** ChatGPT works with a free account; Claude, Gemini, Cursor and Grok work with their paid
-   plans. SlideMate installs it if needed and opens your browser to sign in. No Terminal, no API keys.
-3. **Find your university.** Type its name or your uni email. SlideMate finds its Canvas, Moodle or Blackboard, you
-   sign in once, and your lecture slides start appearing in the sidebar, sorted by course and week.
+> **Release status:** the current download is **v0.5.0**, distributed as a ZIP. This README describes current `main`; university search, the expanded connector directory and DMG packaging include changes newer than that release. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
 
-That's it. Everything else (lecture recording, Send to iPad, flashcards) asks for permission the first time you use it.
+[Installation and first launch →](docs/getting-started.md) · [AI accounts and local models →](docs/getting-started.md#choose-your-ai) · [University setup →](docs/getting-started.md#connect-your-university)
 
-Prefer to build it yourself? It then opens without any Gatekeeper prompt:
+## Why the whole workflow matters
 
-```bash
-git clone https://github.com/Mattlo0546/slidemate.git && cd slidemate && scripts/install.sh
-```
+You can upload a PDF to a general chatbot. SlideMate makes the surrounding study work part of the same app:
 
----
+| The job | What SlideMate connects |
+| --- | --- |
+| Get ready for a lecture | University connector → course library → organised PDFs |
+| Understand an equation or diagram | Current slide + deck context + available lecture notes → tutor answer |
+| Annotate on an iPad | Slide or snip → named AirDrop recipient + clipboard |
+| Capture an unrecorded session | Microphone → local transcript → summary and slide-linked notes |
+| Catch up from a transcript | Imported text or timed captions → notes beside the relevant slides |
+| Prepare for an exam | Slides + lecture notes + your questions → flashcards → scheduled reviews |
 
-## Download
+**The advantage is the connection between these steps.** You keep studying in the same place as your materials move from lecture to revision.
 
-Get **SlideMate-x.y.z-macOS.dmg** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest),
-open it and drag **SlideMate** onto **Applications**. It runs on Apple Silicon and Intel Macs with macOS 13 or later.
-(Started it from Downloads instead? SlideMate offers to move itself to Applications.)
+## Architecture
 
-The app isn't notarised by Apple yet, so the first time you open it macOS will block it:
-- **macOS 15 (Sequoia) and later:** try to open it, then go to System Settings → Privacy & Security, scroll down
-  and click **Open Anyway**.
-- **macOS 13–14:** right-click SlideMate → **Open** → **Open**.
-- **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/SlideMate.app`
+SlideMate combines a **Swift/AppKit macOS shell**, a **local Python service**, and a **PDF.js study interface**. Provider adapters reuse signed-in AI CLIs; MCP connectors bridge the university dashboard; lecture processing feeds both the tutor and flashcards.
 
-You only do this once. From 0.3.0 on, SlideMate checks GitHub once a day and offers **Install and Relaunch** when a new
-version is out, so later updates open without the prompt. Choose SlideMate → **Check for Updates…** to check now.
+<img src="docs/media/architecture.svg" width="100%" alt="SlideMate architecture: a Swift WKWebView shell and PDF.js interface talk to a loopback Python service. The service coordinates the library, tutor adapters, lecture pipeline and FSRS flashcards. Local storage holds study data. AI provider services, university systems and the iPad are external boundaries; Ollama inference and Parakeet transcription run locally.">
 
-You'll also need:
-- **One AI tutor**: Claude Code, Codex, Cursor CLI, Grok CLI or Antigravity CLI signed in, or Ollama with a model. The
-  welcome screen installs whichever you pick and signs you in through your browser (see the table below for doing it
-  by hand).
-- **Lecture recording** needs an Apple Silicon Mac. SlideMate downloads speech-to-text (Parakeet, about 3 GB) by itself
-  after setup.
-- **Optional:** `brew install poppler` for slide text with every provider except Claude.
+| Engineering decision | Why it matters | Explore the implementation |
+| --- | --- | --- |
+| **Deck-aware provider sessions** | Prime context once where supported, resume follow-ups, stream answers and tool activity through server-sent events. | [providers.py](server/providers.py), [server.py](server/server.py) |
+| **Transcript-grounded notes** | The model selects transcript line ranges; the app reconstructs quotes from the stored transcript and retains timestamps. | [lecture.py](server/lecture.py) |
+| **Bounded audio processing** | One transcription job at a time, 15-minute segments, live partial transcripts and recovery after interruption. | [lecture.py](server/lecture.py) |
+| **Separate university permissions** | Tutor tool access and the library's Pull action can be enabled independently. Background sync jobs are polled to completion. | [mcp.py](server/mcp.py), [university.py](server/university.py) |
+| **Revision driven by study activity** | Finished lecture notes trigger cards; later tutor questions can add targeted cards. FSRS-5 maintains review state. | [flashcards.py](server/flashcards.py) |
+| **Native Mac integration** | A Swift shell owns the local process, file opening and updates; a separate helper handles AirDrop recipient selection. | [main.swift](macos/SlideMate/main.swift), [airdrop.swift](macos/AirDrop/airdrop.swift) |
 
-## Install from source
+**[Read the architecture deep dive →](docs/architecture.md)** — component map, tutor sequence, lecture pipeline, persistence, trust boundaries and trade-offs. The goal is an inspectable system: follow a student action through the code to the saved result.
 
-Requirements: macOS 13+, [Homebrew](https://brew.sh), and one of Claude Code, Codex, Cursor CLI, Grok CLI or
-Antigravity CLI signed in (or Ollama with a model).
+## Your data and your AI
+
+PDFs, recordings, chats, notes and review history are stored locally. **Local storage does not mean cloud AI never sees your materials.** With a cloud provider, the app sends the context needed for the task: deck content, questions, slide images, attached pictures, and relevant notes or transcripts. Connected university tool results may also enter that conversation.
+
+Audio transcription runs locally through Parakeet. With a local Ollama model, tutoring and generation can run on your Mac too; initial downloads, university connections and update checks still use the network. [Data flow and limitations](docs/architecture.md#data-and-trust-boundaries).
+
+## Questions students ask
+
+### What is SlideMate?
+SlideMate is an all-in-one AI study app for Mac. It combines a lecture PDF viewer, context-aware AI tutor, university material downloads, AirDrop to iPad, lecture transcription and FSRS flashcards. It is a study tool for existing slides, not a presentation generator.
+
+### Is SlideMate free? Do I need another AI subscription?
+SlideMate is free and MIT-licensed, with no SlideMate subscription. Sign in to a supported AI provider using an account that includes access to its CLI. Free-tier eligibility and usage limits are set by the provider. You can also use an Ollama model locally without a cloud AI subscription.
+
+### Can the AI explain the whole lecture deck?
+The tutor uses deck context together with the current slide and available lecture notes. Claude can receive the PDF directly; other adapters generally use extracted slide text plus the current slide image where supported. Large decks and local models have context limits. [How context is assembled](docs/architecture.md#the-tutor-path).
+
+### How do I send a slide to Goodnotes or Notability on my iPad?
+Use **Send to iPad** for a slide or snip. SlideMate opens AirDrop and can select the named iPad after you enable its helper. It also copies the image to the clipboard for Universal Clipboard. The iPad must be discoverable; receiving and importing still follow Apple's and your note app's normal behaviour.
+
+### Does it automatically download my university slides?
+Connecting a supported university starts a material pull. Later, press **Pull** to fetch new files. The library classifies downloaded PDFs by course, type and week. Access depends on the institution's setup and your account; Google Classroom needs an OAuth client file. This is not a promise of continuous background sync for every university.
+
+### Can it help me catch up on a missed lecture?
+Yes, when you have a transcript or timed captions: import them to generate a summary and slide-linked notes. For sessions you attend, record in SlideMate and transcription runs locally. **Automatic fetching and transcription of university-hosted lecture recordings is not part of the verified implementation documented here.**
+
+### How are the flashcards personalised?
+Cards use the lecture slides, available notes, exam hints and your tutor questions. After a revision conversation goes quiet, SlideMate can add cards about what you asked. Review in the app with FSRS or export Anki-compatible text. Generated cards remain editable.
+
+### Is there an iPad, Windows or Linux version?
+The app runs on macOS 13+. iPad is a destination for slides and snips; there is no standalone SlideMate iPad app in this repository. Windows and Linux are not currently supported.
+
+## Build, explore, contribute
 
 ```bash
 git clone https://github.com/Mattlo0546/slidemate.git
@@ -169,179 +188,8 @@ cd slidemate
 scripts/install.sh
 ```
 
-The installer adds `poppler` and `ffmpeg`, plus `parakeet-mlx` on Apple Silicon. It then builds `SlideMate.app`,
-copies it to Applications and opens it, at the same welcome screen as the download.
+The installer builds and installs the app. For a separate development data folder, use `scripts/dev.sh`; for a bundle without installation, use `scripts/build-app.sh`. [Developer setup and checks](docs/architecture.md#development-and-validation).
 
-Because the app is built on your Mac, it opens normally. If you instead download a prebuilt copy, macOS will ask you
-to right-click → Open the first time, since it isn't notarised.
+Found a bug or a university that needs support? [Open an issue](https://github.com/Mattlo0546/slidemate/issues). Include the macOS version, SlideMate version and steps to reproduce; leave credentials and private course materials out. See [contribution guidance](CONTRIBUTING.md).
 
-**AI provider (pick one or more):**
-
-| Provider | Install | Sign in |
-| --- | --- | --- |
-| Claude | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude auth login` (Pro/Max account) |
-| ChatGPT | `brew install codex` | `codex login` (ChatGPT account) |
-| Cursor | `curl https://cursor.com/install -fsS \| bash` | `cursor-agent login` (Cursor account) |
-| Grok | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok login` (grok.com / SuperGrok account) |
-| Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | run `agy` once and sign in with Google |
-| On your Mac | `brew install --cask ollama-app` | no sign-in: `ollama pull qwen3-vl:8b` downloads a model |
-
-SlideMate runs these CLIs on your behalf with your own subscription. Check each provider's terms for your plan.
-
-### Using it for free
-
-Claude Code needs a paid Claude plan, but you don't need one to use SlideMate:
-
-| Option | What you need | Good to know |
-| --- | --- | --- |
-| **Antigravity** (Google) | A Google account | The free plan has a weekly limit (Google doesn't publish the number). Gemini Flash, plus Claude and GPT-OSS models where your plan includes them. Fast, and reads the slide image. |
-| **ChatGPT Free** | A free ChatGPT account, with Codex | OpenAI includes Codex on the Free plan, with tight limits. |
-| **On your Mac** (Ollama) | 16 GB of memory or more, and about 6 GB of disk for `qwen3-vl:8b` | Free, offline and private. The first question on a deck takes a minute or so while it reads the slides, and answers are simpler than the big models'. No MCP tools. |
-
-## How your files are organised
-
-Your slides live in SlideMate's own folder, `~/Library/Application Support/SlideMate/Slides`, so setup never asks
-where to put them (and iCloud never offloads them). Settings → Library → *Show in Finder* opens it, and you can add
-folders you already have there too.
-
-```
-Slides/                   ← SlideMate's folder, or any folder you add
-├── Robotics/             ← each sub-folder is a course
-│   ├── Week 01/...pdf
-│   └── Lectures (SlideMate)/   ← lecture summaries, slide notes, transcripts (Markdown)
-├── Philosophy of AI/
-│   ├── SlideMate Chats/        ← your tutor chats (Markdown)
-│   └── SlideMate Flashcards/   ← each lecture's flashcards (Markdown, plus Anki exports)
-└── _Inbox/               ← drop PDFs here and they get filed into the right course
-```
-
-SlideMate's own data lives in `~/Library/Application Support/SlideMate`: settings, chats, lecture recordings and
-notes, flashcards and your review history. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
-
-## Send to iPad auto-select
-
-macOS has no silent AirDrop API, so SlideMate opens the AirDrop panel and clicks your iPad for you. To enable it,
-open Settings, enter your iPad's AirDrop name, click **Enable auto-select**, and turn on **SlideMate AirDrop** under
-System Settings → Privacy & Security → Accessibility. Without it, you click your iPad once in the panel.
-
-## Your university (Canvas, Moodle, Blackboard, Google Classroom)
-
-On the welcome screen, type your university's name or your uni email: SlideMate knows where about 80 universities
-keep their Canvas, Moodle or Blackboard, and for others it finds the site from your email's domain and checks what it
-runs. Later, Settings → **Your university** has the same search, plus each connector with its address and
-permissions:
-
-| Connector | For | Open-source MCP server |
-| --- | --- | --- |
-| Canvas | Oxford, Birmingham, Liverpool, Harvard, Stanford, MIT… | [canvas-mcp](https://github.com/Mattlo0546/canvas-mcp) |
-| Moodle | UCL, King's (KEATS), LSE, Cambridge, Warwick, QMUL… | [moodle-mcp](https://github.com/Mattlo0546/moodle-mcp) |
-| Blackboard | Imperial, Edinburgh, Bristol, Leeds, Sheffield… | [blackboard-mcp](https://github.com/Mattlo0546/blackboard-mcp) |
-| Google Classroom | Schools on Google Classroom (needs your own Google client file, once) | [classroom-mcp](https://github.com/Mattlo0546/classroom-mcp) |
-
-SlideMate installs the connection into its own folder with
-[uv](https://docs.astral.sh/uv/), opens the university sign-in window (SSO + MFA), then pulls this year's slides into
-your library, one folder per course. Later, the library's **Pull** button fetches only what's new, and the tutor can
-check deadlines and announcements. Nothing needs Terminal, Homebrew or Apple's Command Line Tools. Each connector shows
-what it can do (everything is read-only) and has two switches: whether the tutor may use it, and whether it's the Pull
-button.
-
-Only what you study comes in: sites that aren't courses (guidance hubs, LSE Life, library skills, year-group
-noticeboards) are left out, and so are posters, handbooks, forms and timetables inside courses. After a Pull, the
-sidebar lists the sites it left out, with **Add** to bring one in.
-
-## Other MCP connections
-
-Settings → Your university → **Advanced** → *Import from other AI apps…* (Claude, Codex, Cursor, Grok and Antigravity), or *Add server…* with a command and arguments
-(the same format as Claude Desktop's `mcpServers`).
-
-- **Tutor**: when this is ticked, the tutor can call the server's tools mid-answer, and you'll see "Using
-  blackboard › bb_upcoming…" while it works. With Claude, servers are passed via `--mcp-config` with their tools
-  allowed. With Codex, they're passed as `-c mcp_servers.*` overrides with `default_tools_approval_mode="approve"`.
-  With Cursor and Grok, SlideMate writes them into the session's own scratch folder (`.cursor/mcp.json` with an
-  allow rule for their tools, or `.grok/config.toml`); shell commands and file edits stay off. With Antigravity, they go
-  in the session folder's `.agents/mcp_config.json`. Antigravity only reads permission rules from its global
-  `~/.gemini/antigravity-cli/settings.json`, so SlideMate adds an `mcp(<server>/*)` allow rule there for each tutor
-  server and removes it again when you remove the server (rules you added yourself are left alone). Shell commands
-  and web pages stay off, since headless Antigravity refuses anything that would need a permission prompt. Local
-  models (Ollama) don't use MCP tools.
-- **Pull**: if a server you add has a sync-style tool (e.g. `bb_sync`), SlideMate wires it to a **Pull from
-  <Server>** button in the library automatically, with its sign-in tool (e.g. `bb_login`) used when the session
-  has expired. Long syncs that run in the background are followed to the end by polling the matching
-  `*_status` tool, and progress shows in the sidebar. You can change this under Settings → Your university → Advanced.
-- **Credentials**: environment variables, such as API tokens, stay in `config.json`, which only you can read. They
-  are never sent to the UI.
-
-## FAQ
-
-**How can I get AI to explain my lecture slides?**
-Open the PDF in SlideMate, right-click a slide → *Explain this slide*. The tutor has read every slide in the deck
-(and your lecture notes, if you recorded the lecture), so it explains how that slide fits the rest of the course.
-
-**Why not just paste my slides into ChatGPT?**
-Pasting slides one at a time loses the rest of the lecture, and asking about "page 23" of a long PDF is clumsy.
-SlideMate keeps the whole deck in context, knows which slide you're on, and saves the chat for each slide.
-
-**How do I get a slide from my Mac into GoodNotes or Notability on my iPad?**
-Click **Send to iPad**, or snip part of a slide → *Send to iPad*. It goes by AirDrop (SlideMate can pick your iPad
-for you) and is copied to the clipboard for pasting via Universal Clipboard.
-
-**Can it turn a lecture recording into notes?**
-Yes. Press **Record** in class. It transcribes on-device (NVIDIA Parakeet), tracks which slide was showing, and
-writes a summary plus notes for each slide with the lecturer's exact words. You can also import an Otter or Granola
-transcript, or have a tool send one in (e.g. lecture-capture captions) through `POST /api/lecture/import` with
-timed `sentences`. With `fill_from`, an earlier lecture's slide notes are kept and only the slides it missed are filled.
-
-**Is it free? Is there a NotebookLM alternative for lecture slides?**
-SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Without a
-plan, it works with a free Google account (Antigravity) or a model on your Mac (Ollama). Unlike
-general "chat with your sources" tools, it's a slide viewer first: the tutor answers about the slide in front of you,
-with the whole deck as context.
-
-**Windows? iPad app?**
-Not yet. It's macOS 13+ (Apple Silicon and Intel), and sends slides to your iPad.
-
-## How it works
-
-SlideMate is a small local web app: a Python server (standard library only, on a Python bundled in the app) on
-`127.0.0.1`, and a web UI using PDF.js, KaTeX and marked. `SlideMate.app` is a thin native window (WKWebView) that
-starts the server and shows the UI.
-
-| Piece | Where |
-| --- | --- |
-| Server, library, chats | `server/server.py`, `server/library.py` |
-| AI providers (Claude Code / Codex / Cursor / Grok) | `server/providers.py` |
-| Installing and signing in to an AI from the app | `server/ai_setup.py` |
-| MCP connections + client | `server/mcp.py` |
-| Your university (finding it; Canvas / Moodle / Blackboard / Google Classroom) | `server/university.py`, `server/static/universities.json`, logos in `server/static/logos/` |
-| Things SlideMate installs for itself (uv, Parakeet, ffmpeg) | `server/tools.py` |
-| Lecture recording → notes | `server/lecture.py` |
-| Flashcards + FSRS scheduling | `server/flashcards.py` |
-| UI | `server/static/` |
-| Native app (window, updater) + AirDrop helper | `macos/` |
-
-The server only listens on localhost and requires a custom header on every API call, so web pages can't reach it.
-
-## Development
-
-```bash
-scripts/dev.sh            # runs the server from source on http://127.0.0.1:8768 with a separate data folder
-scripts/build-app.sh      # builds build/SlideMate.app
-```
-
-UI changes in `server/static/` only need a page refresh. To see the welcome screen again, run `scripts/dev.sh` with an
-empty `SLIDEMATE_DATA` folder.
-
-**Signed releases:** with an Apple Developer ID certificate in the repository's secrets (`DEVELOPER_ID_CERT_P12`,
-`DEVELOPER_ID_CERT_PASSWORD`, `DEVELOPER_ID_NAME`, plus `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` for
-notarisation), the release workflow signs and notarises the app and disk image (`scripts/notarize.sh`), so downloads
-open without the Gatekeeper prompt. `scripts/install.sh --build-only` runs the whole installer
-without touching /Applications.
-
-## Uninstall
-
-Delete `SlideMate.app` from Applications. Your data is in `~/Library/Application Support/SlideMate` (settings, chats,
-lecture notes and recordings), so delete that folder too if you want a clean slate. Your slide folders are never touched.
-
-## License
-
-MIT. Bundled third-party libraries are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
+Built by [Matthew Lo](https://github.com/Mattlo0546). **MIT licensed** — see [LICENSE](LICENSE) and [third-party acknowledgements](THIRD_PARTY.md). [Plain-text product reference](llms.txt).
