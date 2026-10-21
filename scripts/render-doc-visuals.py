@@ -69,7 +69,7 @@ def hero(theme):
     s.text(236, 162, 'SlideMate', 76, 650, tracking=-2.7)
     s.text(758, 127, 'Your slides. Your tutor.', 30, 500)
     s.text(758, 171, 'One study space.', 30, 500, 'accent')
-    s.save('hero', theme)
+    s.save('hero-v3', theme)
 
 
 def social():

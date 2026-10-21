@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg?v=20261021">
-    <img src="docs/media/hero.svg?v=20261021" width="100%" alt="SlideMate. Your slides. Your tutor. One study space. An all-in-one study app for Mac.">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-v3-dark.svg">
+    <img src="docs/media/hero-v3.svg" width="100%" alt="SlideMate. Your slides. Your tutor. One study space. An all-in-one study app for Mac.">
   </picture>
 </p>
 
