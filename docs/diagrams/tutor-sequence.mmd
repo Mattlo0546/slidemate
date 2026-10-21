@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor Student
+    participant UI as Slide viewer
+    participant API as Local Python API
+    participant Session as Provider session
+    participant AI as AI provider or Ollama
+    participant Store as Local chat files
+    Student->>UI: Explain this slide / ask a question
+    UI->>API: Question + slide number + image + attachments
+    API->>Session: Get or create deck session
+    API->>Session: Add saved context and relevant lecture notes
+    Session->>AI: Prime deck or resume conversation
+    AI-->>Session: Text, tool activity and usage events
+    Session-->>API: Normalised response events
+    API-->>UI: Server-sent events
+    API->>Store: Save conversation with slide references
+    Store-->>Student: Revisit by slide; optional Markdown export

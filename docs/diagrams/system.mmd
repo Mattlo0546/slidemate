@@ -1,0 +1,23 @@
+flowchart TB
+    subgraph Mac["Student's Mac"]
+        Shell["Swift / AppKit shell"] --> UI["WKWebView · PDF.js · KaTeX · marked"]
+        UI <-->|"HTTP + server-sent events"| API["Python ThreadingHTTPServer · 127.0.0.1"]
+        API --> Library["Library and chat persistence"]
+        API --> Tutor["Provider adapters and deck sessions"]
+        API --> Lecture["Audio and transcript pipeline"]
+        Lecture --> ASR["ffmpeg + Parakeet MLX"]
+        Lecture --> Cards["Flashcards + FSRS-5"]
+        Library --> Cards
+        API --> MCP["MCP client / connector configuration"]
+        API --> Share["Swift AirDrop helper + clipboard"]
+        Library --> Disk["PDFs · JSON state · Markdown exports"]
+        Lecture --> Disk
+        Cards --> Disk
+        Tutor --> Ollama["Optional local Ollama model"]
+    end
+    Tutor <-->|"Study context / generated output"| Cloud["Selected AI provider"]
+    Tutor -. "Enabled tools, via provider CLI" .-> MCP
+    MCP <-->|"Authenticated material pull / course tools"| Uni["Canvas · Moodle · Blackboard · Classroom"]
+    Share --> iPad["iPad via macOS AirDrop"]
+    Lecture -->|"Generate notes"| Tutor
+    Cards -->|"Generate cards"| Tutor

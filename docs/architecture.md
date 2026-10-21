@@ -8,31 +8,7 @@ SlideMate is a local macOS study application: a Swift shell hosts a web interfac
 
 ![SlideMate component architecture and external boundaries](media/architecture.svg)
 
-```mermaid
-flowchart TB
-    subgraph Mac["Student's Mac"]
-        Shell["Swift / AppKit shell"] --> UI["WKWebView · PDF.js · KaTeX · marked"]
-        UI <-->|"HTTP + server-sent events"| API["Python ThreadingHTTPServer · 127.0.0.1"]
-        API --> Library["Library and chat persistence"]
-        API --> Tutor["Provider adapters and deck sessions"]
-        API --> Lecture["Audio and transcript pipeline"]
-        Lecture --> ASR["ffmpeg + Parakeet MLX"]
-        Lecture --> Cards["Flashcards + FSRS-5"]
-        Library --> Cards
-        API --> MCP["MCP client / connector configuration"]
-        API --> Share["Swift AirDrop helper + clipboard"]
-        Library --> Disk["PDFs · JSON state · Markdown exports"]
-        Lecture --> Disk
-        Cards --> Disk
-        Tutor --> Ollama["Optional local Ollama model"]
-    end
-    Tutor <-->|"Study context / generated output"| Cloud["Selected AI provider"]
-    Tutor -. "Enabled tools, via provider CLI" .-> MCP
-    MCP <-->|"Authenticated material pull / course tools"| Uni["Canvas · Moodle · Blackboard · Classroom"]
-    Share --> iPad["iPad via macOS AirDrop"]
-    Lecture -->|"Generate notes"| Tutor
-    Cards -->|"Generate cards"| Tutor
-```
+[Editable system diagram source](diagrams/system.mmd).
 
 The Python service uses the standard library. PDF rendering and maths run in the web UI. Speech recognition, PDF text extraction, AI CLIs and MCP connectors are separate dependencies; “standard-library server” does not mean the entire app has no dependencies.
 
@@ -57,25 +33,9 @@ The Python service uses the standard library. PDF rendering and maths run in the
 
 A question carries more than text. The API passes the **deck path, current slide number, rendered slide image, question and optional picture attachments** to the selected provider session. Available lecture notes and saved chat history supply additional context.
 
-```mermaid
-sequenceDiagram
-    actor Student
-    participant UI as Slide viewer
-    participant API as Local Python API
-    participant Session as Provider session
-    participant AI as AI provider or Ollama
-    participant Store as Local chat files
-    Student->>UI: Explain this slide / ask a question
-    UI->>API: Question + slide number + image + attachments
-    API->>Session: Get or create deck session
-    API->>Session: Add saved context and relevant lecture notes
-    Session->>AI: Prime deck or resume conversation
-    AI-->>Session: Text, tool activity and usage events
-    Session-->>API: Normalised response events
-    API-->>UI: Server-sent events
-    API->>Store: Save conversation with slide references
-    Store-->>Student: Revisit by slide; optional Markdown export
-```
+![Tutor sequence from the current slide through a provider session to streaming output and local persistence](media/tutor-sequence.svg)
+
+[Editable sequence diagram source](diagrams/tutor-sequence.mmd).
 
 ### Different providers, one interaction model
 
@@ -96,20 +56,9 @@ The Swift shell owns the server process. A parent-PID watcher and shutdown clean
 
 ## The lecture-to-revision path
 
-```mermaid
-flowchart LR
-    Audio["Microphone chunks + slide events"] --> ASR["ffmpeg / Parakeet MLX"]
-    ASR --> Transcript["Timed transcript sentences"]
-    Import["Imported text or timed captions"] --> Transcript
-    Transcript --> Notes["AI summary + per-slide notes + line references"]
-    Notes --> Quotes["Quotes reconstructed from transcript lines"]
-    Notes --> Saved["Persist notes and Markdown"]
-    Saved --> Tutor["Tutor receives lecture context"]
-    Saved --> Cards["Generate / update flashcards"]
-    Questions["Student's tutor questions"] --> Cards
-    Cards --> Review["FSRS-5 review queue"]
-    Review --> Export["Markdown / Anki-compatible text"]
-```
+![Lecture pipeline: recording or imported captions become transcript-grounded notes, tutor context and FSRS flashcards](media/lecture-pipeline.svg)
+
+[Editable pipeline diagram source](diagrams/lecture-pipeline.mmd).
 
 ### Memory and recovery
 

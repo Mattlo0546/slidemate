@@ -1,0 +1,12 @@
+flowchart LR
+    Audio["Microphone chunks + slide events"] --> ASR["ffmpeg / Parakeet MLX"]
+    ASR --> Transcript["Timed transcript sentences"]
+    Import["Imported text or timed captions"] --> Transcript
+    Transcript --> Notes["AI summary + per-slide notes + line references"]
+    Notes --> Quotes["Quotes reconstructed from transcript lines"]
+    Notes --> Saved["Persist notes and Markdown"]
+    Saved --> Tutor["Tutor receives lecture context"]
+    Saved --> Cards["Generate / update flashcards"]
+    Questions["Student's tutor questions"] --> Cards
+    Cards --> Review["FSRS-5 review queue"]
+    Review --> Export["Markdown / Anki-compatible text"]
