@@ -4,7 +4,8 @@
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#8c959f" stroke-width="1.5"/></marker></defs>
 <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
 <g transform="translate(100 86) scale(0.125)">
-<rect width="864" height="864" rx="190" fill="#fff" stroke="#d1d9e0" stroke-width="7"/>
+<defs><filter id="icon-shadow" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="24"/><feOffset dy="20" result="shadow"/><feFlood flood-color="#1f2328" flood-opacity="0.18"/><feComposite in2="shadow" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="864" height="864" rx="190" fill="#fff" filter="url(#icon-shadow)"/><rect x="5" y="5" width="854" height="854" rx="185" fill="none" stroke="#b7bec8" stroke-width="10"/>
 <rect x="268" y="306" width="104" height="252" rx="52" fill="#000"/><rect x="492" y="306" width="104" height="252" rx="52" fill="#000"/></g>
 <text x="236" y="162" font-size="76" font-weight="650" fill="#1f2328" text-anchor="start" letter-spacing="-2.7">SlideMate</text>
 <text x="758" y="127" font-size="30" font-weight="500" fill="#1f2328" text-anchor="start">Your slides. Your tutor.</text>

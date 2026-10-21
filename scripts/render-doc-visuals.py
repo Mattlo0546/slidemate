@@ -46,11 +46,16 @@ class SVG:
         self.text(x+w/2, y+33, title, 23 if not small else 21, 600, 'onsolid' if solid else 'fg', 'middle')
         self.text(x+w/2, y+61, sub, 17, 400, 'onsolid' if solid else 'muted', 'middle', mono=True)
 
-    def logo(self, x, y, size):
+    def logo(self, x, y, size, *, lifted=False):
         # Preserve the approved white body and straight, centred black eyes.
         scale = size / 864
         self.parts.append(f'<g transform="translate({x} {y}) scale({scale})">')
-        self.parts.append('<rect width="864" height="864" rx="190" fill="#fff" stroke="#d1d9e0" stroke-width="7"/>')
+        if lifted:
+            # A contact shadow and inset edge keep the white icon legible on white.
+            self.parts.append('<defs><filter id="icon-shadow" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="24"/><feOffset dy="20" result="shadow"/><feFlood flood-color="#1f2328" flood-opacity="0.18"/><feComposite in2="shadow" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
+            self.parts.append('<rect width="864" height="864" rx="190" fill="#fff" filter="url(#icon-shadow)"/><rect x="5" y="5" width="854" height="854" rx="185" fill="none" stroke="#b7bec8" stroke-width="10"/>')
+        else:
+            self.parts.append('<rect width="864" height="864" rx="190" fill="#fff" stroke="#d1d9e0" stroke-width="7"/>')
         self.parts.append('<rect x="268" y="306" width="104" height="252" rx="52" fill="#000"/><rect x="492" y="306" width="104" height="252" rx="52" fill="#000"/></g>')
 
     def save(self, name, theme):
@@ -60,7 +65,7 @@ class SVG:
 
 def hero(theme):
     s = SVG(1280, 280, 'SlideMate', 'Your slides. Your tutor. One study space. An all-in-one study app for Mac.', theme)
-    s.logo(100, 86, 108)
+    s.logo(100, 86, 108, lifted=True)
     s.text(236, 162, 'SlideMate', 76, 650, tracking=-2.7)
     s.text(758, 127, 'Your slides. Your tutor.', 30, 500)
     s.text(758, 171, 'One study space.', 30, 500, 'accent')
