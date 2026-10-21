@@ -21,6 +21,7 @@
 <p align="center">
   <a href="#a-study-day-with-slidemate">Explore the features</a> ·
   <a href="#get-started">Get started</a> ·
+  <a href="#compare-study-apps">Compare apps</a> ·
   <a href="#architecture">See the architecture</a> ·
   <a href="#questions-students-ask">FAQ</a>
 </p>
@@ -133,6 +134,49 @@ You can upload a PDF to a general chatbot. SlideMate makes the surrounding study
 | Prepare for an exam | Slides + lecture notes + your questions → flashcards → scheduled reviews |
 
 **The advantage is the connection between these steps.** You keep studying in the same place as your materials move from lecture to revision.
+
+## Compare study apps
+
+**SlideMate is built for the student who studies on a Mac and annotates on an iPad.** University materials, the slide in front of you, your tutor, lecture notes and revision stay connected. Use an eligible AI account you already have, or a local model, without adding a SlideMate subscription.
+
+### SlideMate vs ChatGPT and Claude
+
+| Your study workflow | **SlideMate** | [ChatGPT](docs/comparisons.md#chatgpt) | [Claude](docs/comparisons.md#claude) |
+| --- | --- | --- | --- |
+| Bring in course materials | Pull from supported university dashboards; open local PDFs | Upload files; add supported app sources to Projects | Upload files to chats or project knowledge |
+| Understand a slide | Tutor beside the PDF, with current-slide, deck and lecture-note context | Study Mode guides you through uploaded materials | Ask questions about PDF text and visuals |
+| Keep context organised | Course/type/week library; chats linked to slides | Projects group chats, files and instructions | Projects keep files and conversation context together |
+| Work from a lecture | Record locally → on-device transcript → slide-linked notes¹ | Mac Record transcribes and summarises on eligible plans | Upload an existing text transcript for discussion |
+| Revise | Personalised cards, FSRS review schedule and Anki export | Practice questions and flashcard-style review | Review course files through follow-up conversations |
+| Choose the AI | Supported provider sign-in or local Ollama | ChatGPT account | Claude account |
+
+**SlideMate adds a dedicated study workspace around your AI account.** Its CLI adapters can use eligible ChatGPT or Claude accounts. ChatGPT's Study Mode, Projects and Record are separate features with their own availability rules.
+
+### SlideMate vs AI study apps
+
+| Study workflow | **SlideMate** | [NotebookLM / Gemini Notebook](docs/comparisons.md#notebooklm--gemini-notebook) | [StudyFetch](docs/comparisons.md#studyfetch) | [Quizlet](docs/comparisons.md#quizlet) |
+| --- | --- | --- | --- | --- |
+| Start with your materials | University pulls + local PDFs | Files, Drive sources and web sources | Uploaded course materials | Files, notes and Google Drive |
+| Turn a lecture into study material | Local recording + slide-linked notes¹ | Audio-file transcription into a source | Live recording, transcription and enhanced notes | Study Guides offers audio recording |
+| Practise and remember | Cards from slides, notes and tutor questions; **FSRS + Anki export** | Flashcards, quizzes and missed-card review | Flashcards, spaced repetition and practice tests | Flashcards, Learn and practice tests |
+| Other study formats | Notes beside the relevant slide | Audio/Video Overviews and mind maps | Audio recaps and explainer videos | Study guides and exam-style practice |
+| University LMS → organised local course library | **Built in** for supported connectors² | Not documented³ | Not documented³ | Not documented³ |
+| Slide/snip → your named iPad via AirDrop | **Built in**, with recipient auto-select² | Not documented³ | Not documented³ | Not documented³ |
+
+NotebookLM's overview formats, StudyFetch's broader practice tools and Quizlet's study modes may suit different revision habits. **Choose SlideMate when the priority is less setup and fewer transfers throughout a Mac-and-iPad study day.** It is macOS-only; the iPad receives material rather than running SlideMate.
+
+<details>
+<summary>Comparison scope, requirements and sources — reviewed 21 October 2026</summary>
+
+These tables describe documented workflows, not a model-quality benchmark or an exhaustive feature audit. Google’s current help pages use the name **Gemini Notebook** for the product previously documented as NotebookLM. Feature availability varies by plan, region and account.
+
+1. SlideMate's local transcription requires Apple Silicon and a model download. Cloud AI still receives the context needed to generate notes or tutor answers. Importing an existing transcript is also supported; automatic fetching of university-hosted recordings is not verified.
+2. University pulls require connector setup and a supported institution; subsequent downloads use **Pull**. Named-iPad selection needs the AirDrop helper's Accessibility permission and normal device discovery.
+3. **Not documented** means the exact built-in workflow was not found in the official sources reviewed. It does not mean the product cannot do it through a new feature, custom integration or separate tool. Generic file sharing and Drive import are different from these specific workflows.
+
+SlideMate entries describe current `main`; see the [release distinction](#get-started). Provider eligibility and limits still apply. [Source notes and comparison methodology](docs/comparisons.md).
+
+</details>
 
 ## Architecture
 

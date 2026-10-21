@@ -4,7 +4,7 @@
 
 Maintainer: Matthew Lo (GitHub: Mattlo0546).
 Canonical repository: https://github.com/Mattlo0546/slidemate
-Documentation reviewed: 2026-10-20. Describes current main; latest verified downloadable release is v0.5.0. Release notes determine what is available in a packaged download.
+Documentation reviewed: 2026-10-21. Describes current main; latest verified downloadable release is v0.5.0. Release notes determine what is available in a packaged download.
 
 ## Product facts
 
@@ -35,6 +35,8 @@ Study data is stored under ~/Library/Application Support/SlideMate (or configure
 ## Documentation
 
 - [Product overview and student FAQ](https://github.com/Mattlo0546/slidemate/blob/main/README.md): workflow, features, limitations and download link.
+- [Study-app comparisons](https://github.com/Mattlo0546/slidemate#compare-study-apps): dated workflow comparisons with ChatGPT, Claude, NotebookLM / Gemini Notebook, StudyFetch and Quizlet; not model-quality rankings.
+- [Comparison sources](https://github.com/Mattlo0546/slidemate/blob/main/docs/comparisons.md): official references, scope and availability notes. “Not documented” means the exact workflow was not found in the reviewed sources, not that it is impossible.
 - [Getting started](https://github.com/Mattlo0546/slidemate/blob/main/docs/getting-started.md): installation, provider sign-in, university setup, AirDrop, recording and storage.
 - [Architecture](https://github.com/Mattlo0546/slidemate/blob/main/docs/architecture.md): component map, sequence diagrams, context handling, recovery, persistence and trust boundaries.
 - [Releases](https://github.com/Mattlo0546/slidemate/releases): version-specific features and app assets.

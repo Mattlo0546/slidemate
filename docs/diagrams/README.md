@@ -24,4 +24,6 @@ python3 scripts/render-doc-visuals.py
 
 This writes the header, system map, tutor sequence and lecture pipeline in light and dark variants, plus the social-preview SVG. Export `docs/media/social-preview.svg` to a 1280 × 640 PNG when changing the GitHub social card. The PNG is committed separately and uploaded in repository settings.
 
+The current README header uses `hero-v3.svg` and `hero-v3-dark.svg`. Change the filename and README references when a header refresh needs a new cache key: GitHub's raw-file redirect strips query parameters, so a query-string version does not reliably refresh an already cached image.
+
 The `.mmd` files here are editable Mermaid descriptions of the underlying flows, independent of the SVG layout. The system map deliberately groups related modules; the architecture document and Mermaid source provide more detail. Dashed component outlines mean an external system; dashed arrows in the sequence diagram mean response events.
