@@ -49,7 +49,8 @@ DEFAULTS = {
     "antigravity_effort": "",       # "" = model default
     "ollama_model": "",             # blank = the first downloaded model that can see images
     "ipad_name": "",
-    "rec_limit_min": 120,  # stop + save a lecture recording after this long (0 = no limit)
+    "rec_limit_min": 120,
+    "fill_from_recordings": True,   # after a Pull, write notes for missed lectures from the university's recordings  # stop + save a lecture recording after this long (0 = no limit)
     "airdrop": True,
     "copy_to_clipboard": True,
     "write_markdown": True,         # also save chats / lecture notes as Markdown next to your slides

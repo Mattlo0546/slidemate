@@ -1332,6 +1332,23 @@ function showPane(name) {
   store.set('settingsPane', name);
 }
 document.querySelector('.set-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+// Missed lectures, filled from the university's recordings (server/recordings.py)
+let fillRecPoll;
+async function renderFillRec() {
+  clearTimeout(fillRecPoll);
+  let st;
+  try { st = await (await api('/api/recordings')).json(); } catch { return; }
+  const when = st.last ? new Date(st.last * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const filled = (st.filled || []).map((f) => `${f.deck}${f.partial ? ' (gaps filled)' : ''}`).join(', ');
+  $('#fillRecStatus').textContent = !st.available
+    ? 'Connect your university (Your university tab) to use its recordings.'
+    : st.running ? (st.log.at(-1) || 'Checking your recordings…')
+    : (filled ? `Last check filled: ${filled}.` : when ? `Last checked ${when}: nothing missing.` : 'Runs after each Pull.');
+  $('#btnFillRec').disabled = !st.available || st.running;
+  if (st.running && $('#settings').open) fillRecPoll = setTimeout(renderFillRec, 4000);
+}
+$('#btnFillRec').onclick = async () => { await post('/api/recordings/run', {}); renderFillRec(); };
+
 async function openSettings(pane) {
   draft = JSON.parse(JSON.stringify(cfg));
   $('#savedHint').textContent = '';
@@ -1339,6 +1356,8 @@ async function openSettings(pane) {
   renderRoots();
   $('#setIpad').value = cfg.ipad_name || '';
   $('#setRecLimit').value = cfg.rec_limit_min ?? 120;
+  $('#setFillRec').checked = cfg.fill_from_recordings !== false;
+  renderFillRec();
   $('#setCardsAuto').checked = cfg.cards_auto !== false;
   $('#setCardsChats').checked = cfg.cards_from_chats !== false;
   $('#setCardsNew').value = cfg.cards_new_per_day ?? 20;
@@ -1798,6 +1817,7 @@ function settingsPayload() {
     sync_mcp: mode === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
     write_markdown: $('#setMd').checked,
     rec_limit_min: Math.max(0, Math.min(1440, Math.round(+$('#setRecLimit').value || 0))),
+    fill_from_recordings: $('#setFillRec').checked,
     cards_auto: $('#setCardsAuto').checked, cards_from_chats: $('#setCardsChats').checked,
     cards_new_per_day: Math.max(0, Math.min(500, Math.round(+$('#setCardsNew').value || 0))),
     cards_retention: +$('#setCardsRetention').value || 0.9,
@@ -2649,7 +2669,7 @@ async function loadLectures(path, selectId) {
   const keep = selectId || (lec.cur && lec.list.some((l) => l.id === lec.cur) ? lec.cur : null);
   lec.cur = keep || lec.list.find((l) => l.status === 'done')?.id || lec.list[0]?.id || null;
   const pick = $('#lecturePick');
-  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${{ imported: 'imported', replay: 'Re/Play' }[l.source] || 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
+  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${{ imported: 'imported', replay: 'uni recording' }[l.source] || 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
   pick.value = lec.cur || '';
   pick.hidden = lec.list.length < 2;
   await loadLecture();
@@ -2721,7 +2741,7 @@ function renderNotes() {
   }
   const quotes = (s.quotes || []).map((q) => `<div class="quote">
       ${q.start != null && d.has_audio && !q.lecture ? `<button class="play" data-t="${q.start}">${icon('play')}${fmtT(q.start)}</button>`
-        : q.start != null && m.replay_url && !q.lecture ? `<a class="muted small" href="${esc(m.replay_url)}?playFrom=${Math.round(q.start * 1000)}" title="Watch this moment on Re/Play">${fmtT(q.start)} ↗</a>`
+        : q.start != null && m.replay_url && !q.lecture ? `<a class="muted small" href="${esc(replayAt(m, q.start))}" title="Watch this moment in the recording">${fmtT(q.start)} ↗</a>`
         : (q.start != null ? `<span class="muted small">${fmtT(q.start)}</span>` : '')}
       <blockquote>${esc(q.text)}</blockquote></div>`).join('');
   pane.innerHTML = `<h2>Slide ${n}: what the lecturer said</h2>${mdRender(s.notes_md || '')}
@@ -2735,6 +2755,14 @@ $('#notesPane').addEventListener('click', (e) => {
   if (a === 'import') openImport();
   if (a === 'regen') regenNotes();
 });
+
+// A link to this moment of the university's recording (Bristol's own job only sends Mediasite links).
+function replayAt(m, t) {
+  const p = m.replay_platform || 'mediasite', u = m.replay_url, sep = u.includes('?') ? '&' : '?';
+  if (p === 'mediasite') return `${u}${sep}playFrom=${Math.round(t * 1000)}`;
+  if (p === 'panopto') return `${u}${sep}start=${Math.floor(t)}`;
+  return u;
+}
 
 // ---------- audio playback of quotes ----------
 const lecAudio = $('#lecAudio');

@@ -291,6 +291,13 @@ writes a summary plus notes for each slide with the lecturer's exact words. You 
 transcript, or have a tool send one in (e.g. lecture-capture captions) through `POST /api/lecture/import` with
 timed `sentences`. With `fill_from`, an earlier lecture's slide notes are kept and only the slides it missed are filled.
 
+**I missed a lecture. Can it still write the notes?**
+Yes, if your university records lectures (Panopto, Echo360 / Lecturecast, Mediasite / Re/Play, or Meet recordings in
+Google Classroom). After each Pull, SlideMate asks your university connection for the recordings, matches each one to
+its slide deck, and writes notes for any deck that has none. If your own recording only caught part of a lecture, the
+slides it missed are filled in and your notes are kept. It uses the recording's captions, or transcribes the video on
+your Mac when there are none. Turn it off in Settings → Lecture recording.
+
 **Is it free? Is there a NotebookLM alternative for lecture slides?**
 SlideMate is free and MIT-licensed, and uses the Claude or ChatGPT plan you already have, with no API key. Without a
 plan, it works with a free Google account (Antigravity) or a model on your Mac (Ollama). Unlike

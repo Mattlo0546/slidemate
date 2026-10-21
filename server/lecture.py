@@ -281,7 +281,7 @@ def import_transcript(path, text, on_date=None, model="opus", sentences=None, so
     timed = [s["end"] or s["start"] for s in sents if (s["end"] or s["start"]) is not None]
     save_meta(lid, id=lid, **deck_info(path), date=on_date or date.today().isoformat(), started=time.time(),
               status="writing", source=source, fill_from=fill_from, duration=max(timed) if timed else None,
-              **{k: v for k, v in extra.items() if k in ("replay_id", "replay_title", "replay_url")})
+              **{k: v for k, v in extra.items() if k in ("replay_id", "replay_title", "replay_url", "replay_platform")})
     lib._save(ldir(lid) / "transcript.json", sents)
     lib._save(ldir(lid) / "events.json", [])
     threading.Thread(target=lambda: _safe_notes(lid, model), daemon=True).start()

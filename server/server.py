@@ -23,6 +23,7 @@ import ai_setup
 import config
 import flashcards
 import lecture
+import recordings
 import library as lib
 import mcp
 import providers
@@ -299,6 +300,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(university.find(arg("q")))
             if u.path == "/api/ai/setup":
                 return self._json(ai_setup.status())
+            if u.path == "/api/recordings":
+                return self._json(recordings.status())
             if u.path == "/api/status":
                 only = (urllib.parse.parse_qs(u.query).get("only") or [""])[0]
                 return self._json(status([n for n in only.split(",") if n]))
@@ -486,6 +489,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/sync":
             lib.start_sync(login_first=bool(body.get("login")))
             return self._json(lib.sync_state())
+        if p == "/api/recordings/run":
+            return self._json(recordings.start(force=bool(body.get("force"))))
         if p == "/api/sync/courses":
             try:
                 return self._json(lib.choose_courses(body.get("include") or [], body.get("exclude") or []))
