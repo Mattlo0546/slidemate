@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="920" viewBox="0 0 1280 920" role="img" aria-labelledby="title desc">
+<title id="title">From a lecture to revision</title><desc id="desc">A local recording or an imported transcript feeds numbered transcript sentences. The AI selects slide notes and line references; the app rebuilds quotes from source text. Saved notes feed the tutor and flashcards; FSRS schedules review.</desc>
+<rect width="1280" height="920" fill="#0d1117"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b949e" stroke-width="1.5"/></marker></defs>
+<g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<text x="40" y="43" font-size="24" font-weight="500" fill="#e6edf3" text-anchor="start">Lectures / capture to revision</text>
+<path d="M384 138 H448" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M792 138 H856" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M212 222 V198 H1028 V180" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="620" y="220" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">transcript import skips ASR</text>
+<path d="M1028 180 V370" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M856 412 H792" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M448 412 H384" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M212 454 V510 H620 V566" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M212 510 V566" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M792 608 H856" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M620 650 V726" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1028 726 V690 H690 V650" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="40" y="96" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="129" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Record on your Mac</text>
+<text x="212.0" y="157" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">audio chunks + slide events</text>
+<rect x="448" y="96" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="129" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Transcribe locally</text>
+<text x="620.0" y="157" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">ffmpeg → Parakeet MLX</text>
+<rect x="856" y="96" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="129" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Numbered transcript</text>
+<text x="1028.0" y="157" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">sentences + timestamps</text>
+<rect x="40" y="222" width="344" height="70" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="255" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Or import captions</text>
+<text x="212.0" y="283" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">timed captions / plain text</text>
+<rect x="856" y="370" width="344" height="84" rx="7" fill="#e6edf3" stroke="#e6edf3" stroke-width="1.5"/>
+<text x="1028.0" y="403" font-size="23" font-weight="600" fill="#0d1117" text-anchor="middle">Generate lecture notes</text>
+<text x="1028.0" y="431" font-size="17" font-weight="400" fill="#0d1117" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">summary + slide line ranges</text>
+<rect x="448" y="370" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="403" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Rebuild source quotes</text>
+<text x="620.0" y="431" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">read original transcript lines</text>
+<rect x="40" y="370" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="403" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Save notes</text>
+<text x="212.0" y="431" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">local files + Markdown</text>
+<rect x="40" y="566" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="599" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Tutor context</text>
+<text x="212.0" y="627" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">explanations beside slides</text>
+<rect x="448" y="566" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="599" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Generate flashcards</text>
+<text x="620.0" y="627" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">slides + notes + questions</text>
+<rect x="856" y="566" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="599" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">FSRS-5</text>
+<text x="1028.0" y="627" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">schedule the next review</text>
+<rect x="448" y="726" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="759" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Export cards</text>
+<text x="620.0" y="787" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">Markdown / Anki text</text>
+<rect x="856" y="726" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="759" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Tutor questions</text>
+<text x="1028.0" y="787" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">topics that needed help</text>
+<text x="40" y="886" font-size="19" font-weight="400" fill="#a0a9b4" text-anchor="start">Quotes link back to transcript evidence; ASR and generated notes can still make mistakes.</text>
+</g></svg>

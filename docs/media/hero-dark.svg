@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="280" viewBox="0 0 1280 280" role="img" aria-labelledby="title desc">
+<title id="title">SlideMate</title><desc id="desc">Your slides. Your tutor. One study space. An all-in-one study app for Mac.</desc>
+<rect width="1280" height="280" fill="#0d1117"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b949e" stroke-width="1.5"/></marker></defs>
+<g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<g transform="translate(100 86) scale(0.125)">
+<rect width="864" height="864" rx="190" fill="#fff" stroke="#d1d9e0" stroke-width="7"/>
+<rect x="268" y="306" width="104" height="252" rx="52" fill="#000"/><rect x="492" y="306" width="104" height="252" rx="52" fill="#000"/></g>
+<text x="236" y="162" font-size="76" font-weight="650" fill="#e6edf3" text-anchor="start" letter-spacing="-2.7">SlideMate</text>
+<text x="758" y="127" font-size="30" font-weight="500" fill="#e6edf3" text-anchor="start">Your slides. Your tutor.</text>
+<text x="758" y="171" font-size="30" font-weight="500" fill="#8aabff" text-anchor="start">One study space.</text>
+</g></svg>

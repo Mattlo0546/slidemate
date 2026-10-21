@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
+<title id="title">SlideMate system architecture</title><desc id="desc">A native Swift shell hosts a PDF.js web view. A loopback Python API coordinates local files, university connectors, provider sessions, lectures and revision. Dashed boxes identify university services, cloud AI and the iPad. Ollama and Parakeet run locally.</desc>
+<rect width="1280" height="860" fill="#0d1117"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b949e" stroke-width="1.5"/></marker></defs>
+<g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<text x="40" y="43" font-size="24" font-weight="500" fill="#e6edf3" text-anchor="start">SlideMate / system architecture</text>
+<text x="1240" y="43" font-size="18" font-weight="400" fill="#a0a9b4" text-anchor="end">Dashed outline = outside this Mac</text>
+<path d="M384 126 H448" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M212 168 V218 H490 V264" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="350" y="205" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle">starts</text>
+<path d="M792 306 H856" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1028 264 V168" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1049" y="222" font-size="18" font-weight="400" fill="#a0a9b4" text-anchor="start">AirDrop</text>
+<path d="M620 168 V264" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="642" y="222" font-size="18" font-weight="400" fill="#a0a9b4" text-anchor="start" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">HTTP + SSE</text>
+<path d="M448 306 H384" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="416" y="290" font-size="16" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">I/O</text>
+<path d="M620 348 V402" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M212 402 H1028" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M212 402 V460" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M620 402 V460" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M1028 402 V460" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M212 552 V674" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="232" y="619" font-size="18" font-weight="400" fill="#a0a9b4" text-anchor="start" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">MCP connectors</text>
+<path d="M620 552 V608" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M530 608 H710" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round"/>
+<path d="M530 608 V674" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<path d="M710 608 V674" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<path d="M1028 552 V674" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1048" y="619" font-size="18" font-weight="400" fill="#a0a9b4" text-anchor="start" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">local ASR</text>
+<rect x="40" y="84" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="117" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Native shell</text>
+<text x="212.0" y="145" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">Swift · AppKit</text>
+<rect x="448" y="84" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="117" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Study interface</text>
+<text x="620.0" y="145" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">WKWebView · PDF.js</text>
+<rect x="856" y="84" width="344" height="84" rx="7" fill="#0d1117" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="5 5"/>
+<text x="1028.0" y="117" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Your iPad</text>
+<text x="1028.0" y="145" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">AirDrop + clipboard</text>
+<rect x="40" y="264" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="297" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Local files</text>
+<text x="212.0" y="325" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">PDF · JSON · Markdown</text>
+<rect x="448" y="264" width="344" height="84" rx="7" fill="#e6edf3" stroke="#e6edf3" stroke-width="1.5"/>
+<text x="620.0" y="297" font-size="23" font-weight="600" fill="#0d1117" text-anchor="middle">Python API</text>
+<text x="620.0" y="325" font-size="17" font-weight="400" fill="#0d1117" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">127.0.0.1 · server.py</text>
+<rect x="856" y="264" width="344" height="84" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="297" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Share helper</text>
+<text x="1028.0" y="325" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">Swift · Accessibility</text>
+<rect x="40" y="460" width="344" height="92" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="212.0" y="493" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Library + connectors</text>
+<text x="212.0" y="521" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">library.py · mcp.py</text>
+<rect x="448" y="460" width="344" height="92" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="620.0" y="493" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">AI sessions</text>
+<text x="620.0" y="521" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">providers.py</text>
+<rect x="856" y="460" width="344" height="92" rx="7" fill="#0d1117" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="493" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">Lectures + revision</text>
+<text x="1028.0" y="521" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">lecture.py · flashcards.py</text>
+<rect x="40" y="674" width="344" height="84" rx="7" fill="#0d1117" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="5 5"/>
+<text x="212.0" y="707" font-size="23" font-weight="600" fill="#e6edf3" text-anchor="middle">University services</text>
+<text x="212.0" y="735" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">Canvas · Moodle · more</text>
+<rect x="448" y="674" width="164" height="84" rx="7" fill="#161b22" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="5 5"/>
+<text x="530.0" y="707" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Cloud AI</text>
+<text x="530.0" y="735" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">CLI sign-in</text>
+<rect x="628" y="674" width="164" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="710.0" y="707" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Ollama</text>
+<text x="710.0" y="735" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">local model</text>
+<rect x="856" y="674" width="344" height="84" rx="7" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+<text x="1028.0" y="707" font-size="21" font-weight="600" fill="#e6edf3" text-anchor="middle">Parakeet MLX</text>
+<text x="1028.0" y="735" font-size="17" font-weight="400" fill="#a0a9b4" text-anchor="middle" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace">on-device transcription</text>
+<text x="40" y="819" font-size="20" font-weight="400" fill="#a0a9b4" text-anchor="start">Lecture notes and flashcard generation use the same provider layer. Study state is saved locally.</text>
+</g></svg>

@@ -6,9 +6,12 @@ SlideMate is a local macOS study application: a Swift shell hosts a web interfac
 
 ## System map
 
-![SlideMate component architecture and external boundaries](media/architecture.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/architecture-dark.svg">
+  <img src="media/architecture.svg" width="100%" alt="SlideMate component architecture and external boundaries">
+</picture>
 
-[Editable system diagram source](diagrams/system.mmd).
+[Mermaid flow source](diagrams/system.mmd) · [Visual sources and rendering](diagrams/README.md).
 
 The Python service uses the standard library. PDF rendering and maths run in the web UI. Speech recognition, PDF text extraction, AI CLIs and MCP connectors are separate dependencies; “standard-library server” does not mean the entire app has no dependencies.
 
@@ -33,9 +36,12 @@ The Python service uses the standard library. PDF rendering and maths run in the
 
 A question carries more than text. The API passes the **deck path, current slide number, rendered slide image, question and optional picture attachments** to the selected provider session. Available lecture notes and saved chat history supply additional context.
 
-![Tutor sequence from the current slide through a provider session to streaming output and local persistence](media/tutor-sequence.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/tutor-sequence-dark.svg">
+  <img src="media/tutor-sequence.svg" width="100%" alt="Tutor sequence from the current slide through a provider session to streaming output and local persistence">
+</picture>
 
-[Editable sequence diagram source](diagrams/tutor-sequence.mmd).
+[Mermaid sequence source](diagrams/tutor-sequence.mmd) · [Visual sources and rendering](diagrams/README.md).
 
 ### Different providers, one interaction model
 
@@ -56,9 +62,12 @@ The Swift shell owns the server process. A parent-PID watcher and shutdown clean
 
 ## The lecture-to-revision path
 
-![Lecture pipeline: recording or imported captions become transcript-grounded notes, tutor context and FSRS flashcards](media/lecture-pipeline.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/lecture-pipeline-dark.svg">
+  <img src="media/lecture-pipeline.svg" width="100%" alt="Lecture pipeline: recording or imported captions become transcript-grounded notes, tutor context and FSRS flashcards">
+</picture>
 
-[Editable pipeline diagram source](diagrams/lecture-pipeline.mmd).
+[Mermaid pipeline source](diagrams/lecture-pipeline.mmd) · [Visual sources and rendering](diagrams/README.md).
 
 ### Memory and recovery
 

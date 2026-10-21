@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/media/hero.svg" width="100%" alt="SlideMate. Less study admin. More understanding. Your slides, AI tutor, lecture notes and flashcards in one Mac app.">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg">
+    <img src="docs/media/hero.svg" width="100%" alt="SlideMate. Your slides. Your tutor. One study space. An all-in-one study app for Mac.">
+  </picture>
 </p>
 
 <h1 align="center">SlideMate — your all-in-one AI study app for Mac</h1>
@@ -135,7 +138,10 @@ You can upload a PDF to a general chatbot. SlideMate makes the surrounding study
 
 SlideMate combines a **Swift/AppKit macOS shell**, a **local Python service**, and a **PDF.js study interface**. Provider adapters reuse signed-in AI CLIs; MCP connectors bridge the university dashboard; lecture processing feeds both the tutor and flashcards.
 
-<img src="docs/media/architecture.svg" width="100%" alt="SlideMate architecture: a Swift WKWebView shell and PDF.js interface talk to a loopback Python service. The service coordinates the library, tutor adapters, lecture pipeline and FSRS flashcards. Local storage holds study data. AI provider services, university systems and the iPad are external boundaries; Ollama inference and Parakeet transcription run locally.">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/architecture-dark.svg">
+  <img src="docs/media/architecture.svg" width="100%" alt="SlideMate architecture: a Swift WKWebView shell and PDF.js interface talk to a loopback Python service. The service coordinates the library, tutor adapters, lecture pipeline and FSRS flashcards. Local storage holds study data. AI provider services, university systems and the iPad are external boundaries; Ollama inference and Parakeet transcription run locally.">
+</picture>
 
 | Engineering decision | Why it matters | Explore the implementation |
 | --- | --- | --- |
