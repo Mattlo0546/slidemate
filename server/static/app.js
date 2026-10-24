@@ -356,6 +356,7 @@ async function openPdf(path, page) {
     goTo(page || store.get('page:' + path, 1), false);
     renderLibrary();
     renderChat();
+    loadSuggestions();
     if (window.innerWidth < 1000) document.body.classList.add('lib-hidden');
   } catch (e) {
     toast('Could not open PDF: ' + e.message, true);
@@ -889,7 +890,7 @@ function renderChat() {
       The tutor has read the whole deck, so answers link back to the rest of the lecture. Right-click a slide or press <kbd>E</kbd>.
       ${state.chatMode === 'slide' && others ? `<br><button class="small" id="viewAll">${icon('history')}See ${others} question${others > 1 ? 's' : ''} on other slides</button>` : ''}</div>`;
     $('#viewAll')?.addEventListener('click', () => setChatMode('all'));
-    return;
+    return renderQuiz();
   }
   let lastDay = '';
   for (const m of msgs) {
@@ -898,6 +899,7 @@ function renderChat() {
     box.append(msgEl(m));
   }
   box.scrollTop = box.scrollHeight;
+  renderQuiz();
 }
 function msgEl(m) {
   const d = document.createElement('div');
@@ -995,8 +997,9 @@ function renderTray() {
 }
 function updatePlaceholder() {
   const n = pendingPics.length;
-  $('#askInput').placeholder = pendingSnip ? `Ask about the snipped area of slide ${pendingSnip.page}`
+  $('#askInput').dataset.ph = pendingSnip ? `Ask about the snipped area of slide ${pendingSnip.page}`
     : n ? `Ask about your picture${n > 1 ? 's' : ''}` : 'Ask about this slide';
+  paintGhost();  // sets the placeholder, unless a suggestion is showing
 }
 $('#attachTray').addEventListener('click', (e) => {
   const b = e.target.closest('[data-rm]');
@@ -1019,6 +1022,7 @@ async function ask(question) {
     question = 'Read my notes in the attached picture' + (pendingPics.length > 1 ? 's' : '') + ' and help me understand them.';
   }
   if (state.busy) return toast('Still answering. Press ■ Stop (or Esc) to cancel it.');
+  closeQuiz();
   state.busy = true;
   state.abort = new AbortController();
   setStopMode(true);
@@ -1102,6 +1106,7 @@ async function askInner(question) {
     paint();
     const item = lib.items.find((x) => x.path === path);
     if (item && !item.hasChat) { item.hasChat = true; renderLibrary(); }
+    if (!state.stopping && bot.text.trim()) fetchFollowups(path, page);  // what to ask next (grey in the ask box)
   } catch (e) {
     if (e.name === 'AbortError' || state.stopping) {
       bot.text = bot.text.trim() ? bot.text.trimEnd() + '\n\n_(stopped)_' : '_Stopped before answering._';
@@ -1127,21 +1132,225 @@ $('#askForm').addEventListener('submit', (e) => {
   ask(v);
 });
 // Grow the box with its text; only show a scrollbar once it hits the max height. (With ⌘+ text zoom,
-// WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar.)
+// WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar: below the
+// max, overflow stays hidden.) The box is border-box, so scrollHeight (text + padding) is exactly its height, and
+// the space under the last line matches the space above the first.
 const ASK_MAX = 180;
 const autosize = () => {
   const t = $('#askInput');
   t.style.height = 'auto';
   const h = t.scrollHeight;
-  t.style.height = Math.min(h + 2, ASK_MAX) + 'px';
+  t.style.height = Math.min(h, ASK_MAX) + 'px';
   t.style.overflowY = h > ASK_MAX ? 'auto' : 'hidden';
 };
-$('#askInput').addEventListener('input', autosize);
+$('#askInput').addEventListener('input', () => { autosize(); paintGhost(); });
 $('#askInput').addEventListener('keydown', (e) => {
+  if ((e.key === 'Tab' || e.key === 'ArrowRight') && !e.isComposing && acceptGhost(e)) return;
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#askForm').requestSubmit(); }
-  if (e.key === 'Escape') { pendingSnip = null; updatePlaceholder(); e.target.blur(); }
+  if (e.key === 'Escape') {
+    if ($('#askGhost').textContent && !e.target.value) { sugg.hidden.add(suggKey()); showSuggestions(); return; }  // dismiss the suggestion first
+    pendingSnip = null; updatePlaceholder(); e.target.blur();
+  }
 });
-$('#chips').addEventListener('click', (e) => { if (e.target.dataset.q) ask(e.target.dataset.q); });
+$('#chips').addEventListener('click', (e) => {
+  if (e.target.dataset.q) ask(e.target.dataset.q);
+  else if (e.target.closest('[data-quiz]')) quizSlide();
+});
+
+// ---------- Quiz me: this slide's flashcards in the chat. Answer from memory, reveal, rate (same FSRS review as
+// a study session, so it counts). Not saved in the chat history. ----------
+const TUTOR_QUIZ = 'Quiz me with 3 short questions on this slide, then wait for my answers.';
+let quiz = null;  // {path, page, cards, i, revealed, typed, done, seen, firstTry, info, el}
+async function quizSlide(page = state.current) {
+  if (!state.pdf) return;
+  if (panelTab !== 'chat') setPanelTab('chat');
+  showChat();
+  const path = state.path;
+  let r;
+  try { r = await (await api(`/api/cards/slide?path=${encodeURIComponent(path)}&page=${page}`)).json(); }
+  catch { return toast('Couldn\'t load the flashcards', true); }
+  if (state.path !== path) return;
+  quiz?.el?.remove();
+  quiz = { path, page, cards: r.cards, info: r, i: 0, revealed: false, typed: '', done: 0, seen: new Set(), firstTry: 0, busy: false };
+  renderQuiz();
+}
+function closeQuiz() { quiz?.el?.remove(); quiz = null; }
+function renderQuiz() {
+  if (!quiz) return;
+  if (quiz.path !== state.path) { quiz = null; return; }
+  const box = $('#messages');
+  if (!quiz.el) { quiz.el = document.createElement('div'); quiz.el.className = 'quiz'; }
+  box.querySelector('.empty-chat')?.remove();
+  box.append(quiz.el);  // always last, under the conversation
+  const { cards, info } = quiz, c = cards[quiz.i];
+  const head = `<div class="quiz-head">${icon('cards')}<b>Quiz · slide ${quiz.page}</b>
+    <span>${c ? `${quiz.i + 1} of ${cards.length}` : ''}</span><span class="sp"></span>
+    <button class="ghost icon" data-qa="close" title="Close">${icon('x')}</button></div>`;
+  let body;
+  if (!cards.length) {
+    const why = info.job ? 'Flashcards for this deck are being made. They\'ll be here in a few minutes.'
+      : info.deck_cards ? `None of this deck's flashcards cover slide ${quiz.page}.`
+      : info.error ? 'Making flashcards for this deck didn\'t work last time.' : 'This deck has no flashcards yet.';
+    body = `<div class="note">${why}</div><div class="acts">
+      ${!info.job && !info.deck_cards ? `<button class="small primary" data-qa="make">${icon('cards')}Make flashcards</button>` : ''}
+      <button class="small" data-qa="tutor">${icon('sparkle')}Have the tutor quiz me instead</button></div>`;
+  } else if (!c) {
+    const pct = quiz.seen.size ? Math.round(100 * quiz.firstTry / quiz.seen.size) : 0;
+    body = `<div class="note">Done: ${quiz.seen.size} card${quiz.seen.size > 1 ? 's' : ''}, remembered ${pct}% on the first try.
+      They'll come back in your reviews when they're due.</div><div class="acts">
+      <button class="small" data-qa="again">${icon('history')}Quiz again</button>
+      <button class="small" data-qa="tutor">${icon('sparkle')}Have the tutor quiz me</button>
+      <button class="small ghost" data-qa="close">Close</button></div>`;
+  } else {
+    const meta = quiz.info.scope === 'subtopic' ? `<span>No cards for this exact slide · from “${esc(c.subtopic_title)}”</span>` : '';
+    const top = meta || badges(c) ? `<div class="meta">${meta}${badges(c)}</div>` : '';
+    if (!quiz.revealed) {
+      body = `${top}<div class="front">${cardFront(c)}</div>
+        <textarea id="quizTyped" rows="2" placeholder="Answer from memory first (optional). Enter shows the answer.">${esc(quiz.typed)}</textarea>
+        <div class="acts"><button class="small primary" data-qa="reveal">Show answer<kbd>↵</kbd></button>
+        <span class="sp"></span><button class="small ghost" data-qa="skip">Skip</button></div>`;
+    } else {
+      body = `${top}<div class="front small">${cardFront(c)}</div>
+        ${quiz.typed ? `<div class="yours"><span class="lbl">You said</span>${esc(quiz.typed)}</div>` : ''}
+        <div class="back">${cardBack(c)}</div>
+        ${c.why ? `<div class="why">${mdRender(c.why)}</div>` : ''}
+        <div class="study-rate">${RATE.map(([g, l]) => `<button data-rate="${g}" class="r${g}"><b>${l}</b><span>${c.previews?.[g] || ''}</span><kbd>${g}</kbd></button>`).join('')}</div>
+        <div class="acts"><button class="small ghost" data-qa="ask">${icon('sparkle')}Still unclear? Ask the tutor</button></div>`;
+    }
+  }
+  quiz.el.innerHTML = head + body;
+  box.scrollTop = box.scrollHeight;
+  const t = quiz.el.querySelector('#quizTyped');
+  if (t) {
+    t.addEventListener('input', () => { quiz.typed = t.value; });
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); quizReveal(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t.blur(); }
+    });
+    t.focus({ preventScroll: true });
+  }
+}
+function quizReveal() {
+  if (!quiz?.cards[quiz.i] || quiz.revealed) return;
+  quiz.typed = (quiz.el.querySelector('#quizTyped')?.value || '').trim();
+  quiz.revealed = true;
+  renderQuiz();
+}
+async function quizRate(g) {
+  const c = quiz?.cards[quiz.i];
+  if (!c || !quiz.revealed || quiz.busy) return;
+  quiz.busy = true;
+  let r;
+  try { r = await post('/api/cards/review', { path: c.path, id: c.id, rating: g }); }
+  catch { r = { error: 'Couldn\'t save that' }; }
+  finally { if (quiz) quiz.busy = false; }
+  if (!quiz) return;
+  if (r.error) return toast(r.error, true);
+  if (!quiz.seen.has(c.id)) { quiz.seen.add(c.id); if (g > 1) quiz.firstTry++; }
+  if (g === 1) quiz.cards.push({ ...c, ...r.card });  // forgot it: once more before the quiz ends
+  quiz.done++;
+  Object.assign(quiz, { i: quiz.i + 1, revealed: false, typed: '' });
+  if (state.path === c.path) loadDeckCards(c.path);  // keep the Cards tab's counts right
+  renderQuiz();
+}
+$('#messages').addEventListener('click', async (e) => {
+  const rb = e.target.closest('.quiz [data-rate]');
+  if (rb) return quizRate(+rb.dataset.rate);
+  const a = e.target.closest('.quiz [data-qa]');
+  if (!a || !quiz) return;
+  const act = a.dataset.qa, c = quiz.cards[quiz.i];
+  if (act === 'close') return closeQuiz();
+  if (act === 'reveal') return quizReveal();
+  if (act === 'skip') { Object.assign(quiz, { i: quiz.i + 1, revealed: false, typed: '' }); return renderQuiz(); }
+  if (act === 'again') return quizSlide(quiz.page);
+  if (act === 'tutor') { closeQuiz(); return ask(TUTOR_QUIZ); }
+  if (act === 'make') {
+    await post('/api/cards/make', { path: quiz.path, why: 'manual' });
+    toast('Making flashcards for this deck. They\'ll be ready in a few minutes.');
+    return quizSlide(quiz.page);
+  }
+  if (act === 'ask' && c) {
+    closeQuiz();
+    const answer = c.type === 'cloze' ? plainCard(c.front) + (c.back ? ' ' + c.back : '') : c.back;
+    return ask(`I'm quizzing myself on this slide's flashcards and this one didn't stick:\n\nQ: ${c.type === 'cloze' ? c.front.replace(CLOZE_RE, '[…]') : c.front}\nA: ${answer}\n\nHelp me actually understand it (a different angle from the card, tied to the slides), then check me with one quick question.`);
+  }
+});
+window.addEventListener('keydown', (e) => {  // 1–4 rate the quiz card (when you're not typing somewhere)
+  if (!quiz?.revealed || !/^[1-4]$/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || !$('#study').hidden) return;
+  e.preventDefault();
+  quizRate(+e.key);
+});
+
+// ---------- question suggestions: grey text in the ask box, Tab to use it (like Codex / Claude Code) ----------
+// Per slide: starter questions written once per deck by the lightest model. After an answer: follow-ups for that
+// slide replace them. While you type, a suggestion that starts with your text completes it inline.
+const sugg = { starters: new Map(), follow: new Map(), list: [], idx: 0, hidden: new Set(), poll: 0 };
+const suggKey = (path = state.path, page = state.current) => `${path}#${page}`;
+async function loadSuggestions(page = state.current) {
+  const path = state.path;
+  if (!path) return;
+  clearTimeout(sugg.poll);
+  const key = suggKey(path, page);
+  if (!sugg.starters.has(key)) {
+    try {
+      const r = await (await api(`/api/suggest?path=${encodeURIComponent(path)}&page=${page}`)).json();
+      if (r.state === 'ready') sugg.starters.set(key, r.questions);
+      else if (r.state === 'making') sugg.poll = setTimeout(() => { if (suggKey() === key) loadSuggestions(page); }, 6000);
+    } catch {}
+  }
+  if (suggKey() === key) showSuggestions();
+}
+function showSuggestions() {
+  const key = suggKey();
+  sugg.list = sugg.hidden.has(key) ? [] : (sugg.follow.get(key) || sugg.starters.get(key) || []);
+  sugg.idx = 0;
+  paintGhost();
+}
+async function fetchFollowups(path, page) {
+  try {
+    const r = await post('/api/suggest/followup', { path, page });
+    if (!r.questions?.length) return;
+    const key = suggKey(path, page);
+    sugg.follow.set(key, r.questions);
+    sugg.hidden.delete(key);
+    if (suggKey() === key) showSuggestions();
+  } catch {}
+}
+// The suggestion that fits what's typed: the current one when the box is empty, else one that starts with it.
+function ghostMatch() {
+  const v = $('#askInput').value;
+  if (pendingSnip || pendingPics.length || !sugg.list.length || cfg.chat_suggestions === false) return null;
+  if (!v) return sugg.list[sugg.idx];
+  if (v.length < 2 || v.includes('\n')) return null;
+  const lv = v.toLowerCase();
+  return sugg.list.find((s) => s.length > v.length && s.toLowerCase().startsWith(lv)) || null;
+}
+function paintGhost() {
+  const t = $('#askInput'), g = $('#askGhost'), s = ghostMatch(), v = t.value;
+  if (!s || t.scrollHeight > ASK_MAX) { g.innerHTML = ''; t.placeholder = t.dataset.ph || 'Ask about this slide'; return; }
+  t.placeholder = '';
+  g.innerHTML = v
+    ? `<span class="typed">${esc(v)}</span>${esc(s.slice(v.length))}`
+    : `${esc(s)}<kbd>Tab</kbd>${sugg.list.length > 1 ? `<span class="n">${sugg.idx + 1}/${sugg.list.length}</span>` : ''}`;
+}
+// Tab: use the suggestion (or the next one, if the box already holds one). → at the end also completes.
+function acceptGhost(e) {
+  const t = $('#askInput'), v = t.value, s = ghostMatch();
+  const atEnd = t.selectionStart === v.length && t.selectionEnd === v.length;
+  if (e.key === 'Tab' && !e.shiftKey && !s && sugg.list.length > 1 && sugg.list.includes(v)) {
+    sugg.idx = (sugg.list.indexOf(v) + 1) % sugg.list.length;
+    t.value = sugg.list[sugg.idx];
+  } else if (s && (e.key === 'Tab' && !e.shiftKey || e.key === 'ArrowRight' && v && atEnd)) {
+    t.value = s;
+    sugg.idx = sugg.list.indexOf(s);
+  } else return false;
+  e.preventDefault();
+  autosize();
+  t.setSelectionRange(t.value.length, t.value.length);
+  paintGhost();
+  return true;
+}
 $('#btnReset').onclick = async () => {
   if (!state.path) return;
   if (chatFor(state.path).length && !confirm('Start a fresh chat for this deck?\n\nThe current conversation is archived (still saved on disk), and Claude starts over without it.')) return;
@@ -1360,6 +1569,7 @@ async function openSettings(pane) {
   renderFillRec();
   $('#setCardsAuto').checked = cfg.cards_auto !== false;
   $('#setCardsChats').checked = cfg.cards_from_chats !== false;
+  $('#setSuggest').checked = cfg.chat_suggestions !== false;
   $('#setCardsNew').value = cfg.cards_new_per_day ?? 20;
   $('#setCardsRetention').value = String(cfg.cards_retention ?? 0.9);
   $('#setAirdrop').checked = cfg.airdrop;
@@ -1819,6 +2029,7 @@ function settingsPayload() {
     rec_limit_min: Math.max(0, Math.min(1440, Math.round(+$('#setRecLimit').value || 0))),
     fill_from_recordings: $('#setFillRec').checked,
     cards_auto: $('#setCardsAuto').checked, cards_from_chats: $('#setCardsChats').checked,
+    chat_suggestions: $('#setSuggest').checked,
     cards_new_per_day: Math.max(0, Math.min(500, Math.round(+$('#setCardsNew').value || 0))),
     cards_retention: +$('#setCardsRetention').value || 0.9,
   };
@@ -1909,6 +2120,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'j' || k === 'PageDown' || k === ' ') { e.preventDefault(); goTo(state.current + 1); }
   else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'k' || k === 'PageUp') { e.preventDefault(); goTo(state.current - 1); }
   else if (k === 'e') ask('Explain this slide.');
+  else if (k === 'q') quizSlide();
   else if (k === 's') sendSlide();
   else if (k === 'x') startSnip();
   else if (k === '/') { e.preventDefault(); showChat(); $('#askInput').focus(); }
@@ -2035,6 +2247,7 @@ function onSlideChange(n) {
   if (rec && !rec.paused) rec.events.push({ t: Math.round(audioTime() * 10) / 10, slide: n, deck: state.path });
   if (panelTab === 'notes' && lec.mode === 'slide') renderNotes();
   markCardsHere();
+  loadSuggestions(n);
 }
 
 function togglePause() {

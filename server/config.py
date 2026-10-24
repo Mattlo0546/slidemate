@@ -65,6 +65,7 @@ DEFAULTS = {
     "cards_new_per_day": 20,        # new flashcards introduced per day (all decks together)
     "cards_retention": 0.9,         # FSRS target: the chance you still remember a card when it comes up
     "cards_since": 0,               # when flashcards were first switched on (older lectures are made on request)
+    "chat_suggestions": True,       # suggest questions to ask about each slide (grey text in the ask box, Tab to use)
 }
 
 

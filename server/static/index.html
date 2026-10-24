@@ -155,13 +155,13 @@
         <button data-q="Explain this slide more simply, like I'm new to the topic.">Simpler</button>
         <button data-q="Give me a concrete worked example of what this slide is about.">Example</button>
         <button data-q="How does this slide connect to the earlier and later slides? What's the big picture?">Big picture</button>
-        <button data-q="Quiz me with 3 short questions on this slide, then wait for my answers.">Quiz me</button>
+        <button data-quiz title="This slide's flashcards: answer from memory, then rate yourself (Q)">Quiz me</button>
       </div>
       <form id="askForm">
         <div id="attachTray" hidden></div>
         <button class="attach" type="button" id="btnAttach" title="Attach pictures, e.g. photos of your handwritten notes (or drop / paste them here)"><svg><use href="#i-clip"/></svg></button>
         <input type="file" id="attachInput" accept="image/*,.heic,.heif" multiple hidden>
-        <textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea>
+        <div class="ask-wrap"><div id="askGhost" aria-hidden="true"></div><textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea></div>
         <button class="send" type="submit" title="Send (Enter)"><svg><use href="#i-up"/></svg></button>
       </form>
       <div id="composerBar">
@@ -263,6 +263,12 @@
             </div>
           </div>
           <div class="set-group" id="modelRow"></div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Suggest questions</b><span>Not sure what to ask? Grey suggestions appear in the ask box for each slide and after each answer: press Tab to use one. Written by the lightest model (e.g. Haiku), once per deck, from the slides and what the lecturer said.</span></div>
+              <input type="checkbox" class="switch" id="setSuggest">
+            </label>
+          </div>
         </section>
 
         <section class="pane" data-pane="ipad">

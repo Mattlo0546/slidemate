@@ -705,6 +705,27 @@ def study_queue(scope="all", subtopic=""):
     return {"cards": learning + mixed, "now": now, "learn_ahead": LEARN_AHEAD, "more_new": more_new}
 
 
+def slide_cards(path, page):
+    """This slide's flashcards for "Quiz me": cards made from this slide, or else the cards of the subtopic it
+    belongs to. Due and examinable cards first."""
+    deck = load(path) or {}
+    cards = [c for c in deck.get("cards", []) if not c.get("suspended")]
+    titles = {t["id"]: t["title"] for t in deck.get("subtopics", [])}
+    hits, scope = [c for c in cards if page in (c.get("slides") or [])], "slide"
+    if not hits:
+        sub = next((t for t in deck.get("subtopics", []) if page in (t.get("slides") or [])), None)
+        if sub:
+            hits, scope = [c for c in cards if c["subtopic"] == sub["id"]][:6], "subtopic"
+    now, ret = time.time(), retention()
+    end = day_start(now) + 86400
+    due = lambda c: c["srs"]["state"] != "new" and c["srs"]["due"] < end
+    hits.sort(key=lambda c: (not due(c), not c.get("exam"), not c.get("struggle"), c["srs"]["state"] != "new"))
+    return {"cards": [{**c, "path": path, "deck_title": deck.get("title"), "course": deck.get("course"),
+                       "subtopic_title": titles.get(c["subtopic"], ""), "previews": previews(c, now, ret)}
+                      for c in hits],
+            "scope": scope, "deck_cards": len(cards), "job": job(path), "error": deck.get("error")}
+
+
 def _find(path, cid):
     deck = load(path)
     card = next((c for c in (deck or {}).get("cards", []) if c["id"] == cid), None)

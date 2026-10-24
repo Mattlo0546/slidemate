@@ -27,6 +27,7 @@ import recordings
 import library as lib
 import mcp
 import providers
+import suggest
 import tools
 import university
 
@@ -338,6 +339,10 @@ class Handler(BaseHTTPRequestHandler):
                                    "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0})
             if u.path == "/api/cards/queue":
                 return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic")))
+            if u.path == "/api/cards/slide":
+                return self._json(flashcards.slide_cards(arg("path"), int(arg("page") or 1)))
+            if u.path == "/api/suggest":
+                return self._json(suggest.for_slide(arg("path"), int(arg("page") or 1)))
             return self._json({"error": "unknown"}, 404)
         rel = "index.html" if u.path in ("/", "") else urllib.parse.unquote(u.path.lstrip("/"))
         f = (config.STATIC / rel).resolve()
@@ -534,6 +539,8 @@ class Handler(BaseHTTPRequestHandler):
                 if path and os.path.isfile(path):
                     flashcards.request(path, body.get("mode", "auto"), body.get("why", "manual"))
             return self._json({"ok": True, "job": flashcards.job(body.get("path"))})
+        if p == "/api/suggest/followup":
+            return self._json({"questions": suggest.followups(body.get("path", ""), int(body.get("page") or 1))})
         if p == "/api/cards/review":
             return self._json(flashcards.review(body["path"], body["id"], int(body["rating"])))
         if p == "/api/cards/undo":
