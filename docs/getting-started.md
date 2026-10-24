@@ -7,17 +7,17 @@ SlideMate is a macOS app for studying lecture PDFs with an AI tutor, university 
 ## Install the app
 
 1. Open the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest).
-2. Download the **SlideMate macOS app asset**, not GitHub's automatically generated “Source code” archive. v0.5.0 provides `SlideMate-0.5.0-macOS.zip`; later releases may provide a DMG.
+2. Download **SlideMate-0.6.0-macOS.dmg** (recommended) or **SlideMate-0.6.0-macOS.zip** from the release's Assets, not GitHub's automatically generated “Source code” archive.
 3. Unzip the download, or open the DMG, and drag **SlideMate.app** to **Applications**.
 4. Open **Applications → SlideMate**. If macOS blocks it, follow **First launch** below before continuing to the welcome flow.
 
-Future ZIP and DMG packages built from this source also include **Start Here.html** beside the app. Open it in your browser to keep the first-launch steps visible while you install; the guide works offline.
+Both v0.6.0 downloads include **Start Here.html** beside the app. Open it in your browser to keep the first-launch steps visible while you install; the guide works offline.
 
 The app requires **macOS 13+** on Apple Silicon or Intel. Local audio transcription uses Parakeet MLX and requires Apple Silicon. Importing an existing transcript does not require Parakeet.
 
 ### First launch
 
-The v0.5.0 download is not Apple-notarised. You may see “Apple could not verify” or an “unidentified developer” alert before SlideMate's welcome screen can open. If SlideMate opens normally, go straight to [Choose your AI](#choose-your-ai).
+The v0.6.0 downloads are not Apple-notarised. You may see “Apple could not verify” or an “unidentified developer” alert before SlideMate's welcome screen can open. If SlideMate opens normally, go straight to [Choose your AI](#choose-your-ai).
 
 After checking that your copy came from [this repository's releases](https://github.com/Mattlo0546/slidemate/releases) and you trust it:
 
@@ -78,7 +78,7 @@ SlideMate installs its connection tools in its application-support folder and op
 
 Institution names in the search directory help locate a service; they are not endorsements or a guarantee that every course at that institution works. Some university configurations require additional support.
 
-**Release distinction:** v0.5.0 introduced the built-in Moodle/Blackboard connection flow. University search, Canvas and the expanded directory have further changes on `main`. Build from source to use those changes before the next release.
+**Release history:** v0.5.0 introduced the built-in Moodle/Blackboard connection flow. v0.6.0 adds university search, Canvas and the expanded directory.
 
 ### Tutor access and Pull are separate
 

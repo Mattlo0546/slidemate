@@ -4,7 +4,7 @@
 
 Maintainer: Matthew Lo (GitHub: Mattlo0546).
 Canonical repository: https://github.com/Mattlo0546/slidemate
-Documentation reviewed: 2026-10-21. Describes current main; latest verified downloadable release is v0.5.0. Release notes determine what is available in a packaged download.
+Documentation reviewed: 2026-10-24. Documents the v0.6.0 release and current main. Release notes determine what is available in a packaged download.
 
 ## Product facts
 
@@ -24,9 +24,9 @@ Documentation reviewed: 2026-10-21. Describes current main; latest verified down
 
 ## Release distinctions
 
-v0.5.0 is distributed as a macOS ZIP. University search, the expanded connector directory (including Canvas) and DMG packaging have further changes on main after that release. The current README is not a guarantee that every described main-branch feature is in v0.5.0. Build from source for current main.
+v0.6.0 is distributed as a macOS DMG and ZIP. It includes guided setup, university search, the expanded connector directory (including Canvas), and the offline first-launch guide. These additions are newer than v0.5.0. Build from source for current main.
 
-First launch happens before in-app onboarding: move SlideMate to Applications and try opening it. For a trusted official download blocked by an Apple verification alert, use System Settings → Privacy & Security → Security → Open Anyway for SlideMate, then confirm and authenticate if prompted. If the button is missing, retry opening the app and return to Settings. Future packages built from main include an offline Start Here.html guide beside the app; v0.5.0 does not include it. This is separate from Microphone and optional AirDrop Accessibility permissions.
+First launch happens before in-app onboarding: move SlideMate to Applications and try opening it. For a trusted official download blocked by an Apple verification alert, use System Settings → Privacy & Security → Security → Open Anyway for SlideMate, then confirm and authenticate if prompted. If the button is missing, retry opening the app and return to Settings. v0.6.0 packages include an offline Start Here.html guide beside the app; v0.5.0 does not include it. This is separate from Microphone and optional AirDrop Accessibility permissions.
 
 ## Architecture and data boundaries
 
