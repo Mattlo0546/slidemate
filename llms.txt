@@ -26,6 +26,8 @@ Documentation reviewed: 2026-10-21. Describes current main; latest verified down
 
 v0.5.0 is distributed as a macOS ZIP. University search, the expanded connector directory (including Canvas) and DMG packaging have further changes on main after that release. The current README is not a guarantee that every described main-branch feature is in v0.5.0. Build from source for current main.
 
+First launch happens before in-app onboarding: move SlideMate to Applications and try opening it. For a trusted official download blocked by an Apple verification alert, use System Settings → Privacy & Security → Security → Open Anyway for SlideMate, then confirm and authenticate if prompted. If the button is missing, retry opening the app and return to Settings. Future packages built from main include an offline Start Here.html guide beside the app; v0.5.0 does not include it. This is separate from Microphone and optional AirDrop Accessibility permissions.
+
 ## Architecture and data boundaries
 
 Swift/AppKit hosts a WKWebView UI using PDF.js, KaTeX and marked. A Python standard-library HTTP service binds to 127.0.0.1 and coordinates provider processes, library state, lecture jobs, MCP connectors and FSRS flashcards. Cloud AI providers, university services, dependency hosts and GitHub are external services; Ollama inference and Parakeet transcription can run locally.

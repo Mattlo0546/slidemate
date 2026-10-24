@@ -149,12 +149,15 @@ if [ "${1:-}" = "--zip" ]; then
   ZIP="$ROOT/dist/SlideMate-$VERSION-macOS.zip"
   rm -f "$ZIP"
   [ -n "${SLIDEMATE_SIGN_ID:-}" ] && [ -n "${APPLE_ID:-}" ] && scripts/notarize.sh notarize "$APP"
-  ditto -c -k --keepParent "$APP" "$ZIP"
-  echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
-  # A disk image with SlideMate next to an Applications shortcut: drag one onto the other.
-  DMG="$ROOT/dist/SlideMate-$VERSION-macOS.dmg"
+  # Keep the guide outside the app so it can be read before macOS allows the first launch.
+  # SlideMate.app stays at the ZIP root, where the in-app updater expects to find it.
   STAGE=$(mktemp -d)
   ditto "$APP" "$STAGE/SlideMate.app"
+  cp "$ROOT/docs/first-launch.html" "$STAGE/Start Here.html"
+  ditto -c -k "$STAGE" "$ZIP"
+  echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
+  # Add the Applications shortcut only to the disk image, alongside the same app and guide.
+  DMG="$ROOT/dist/SlideMate-$VERSION-macOS.dmg"
   ln -s /Applications "$STAGE/Applications"
   rm -f "$DMG"
   hdiutil create -quiet -volname "SlideMate" -srcfolder "$STAGE" -ov -format UDZO "$DMG"

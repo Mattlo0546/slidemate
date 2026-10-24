@@ -39,7 +39,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
-          [ -f "$NOTES" ] || NOTES=/dev/null
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          cat .github/release-notes/installation.md > "$NOTES"
+          VERSION_NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$VERSION_NOTES" ]; then
+            printf '\n\n' >> "$NOTES"
+            cat "$VERSION_NOTES" >> "$NOTES"
+          fi
           gh release create "$GITHUB_REF_NAME" dist/SlideMate-*-macOS.zip dist/SlideMate-*-macOS.dmg \
             --title "SlideMate ${GITHUB_REF_NAME}" --notes-file "$NOTES" --generate-notes
