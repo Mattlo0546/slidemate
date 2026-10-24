@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Start here — SlideMate for Mac</title>
+  <style>
+    :root {
+      --paper: #fff; --canvas: #f5f7fb; --ink: #20242b;
+      --muted: #505d70; --blue: #315fdd; --line: #dae1ee; --wash: #edf2ff;
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink); background: var(--canvas); line-height: 1.6;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 850px; margin: 0 auto; padding: 44px 32px 32px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 650; }
+    .brand svg { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 10px; }
+    .brand span { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 400; }
+    h1, h2 { font-family: "Helvetica Neue", Helvetica, sans-serif; line-height: 1.15; }
+    h1 { font-size: clamp(32px, 6vw, 48px); letter-spacing: -1.8px; margin: 32px 0 12px; }
+    h2 { font-size: 21px; letter-spacing: -.4px; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    .intro { max-width: 640px; color: var(--muted); font-size: 17px; }
+    a { color: var(--blue); text-underline-offset: 3px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; border-radius: 3px; }
+    .steps { list-style: none; padding: 0; margin: 30px 0 26px; counter-reset: setup; }
+    .steps > li {
+      display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 18px;
+      padding: 24px 0; border-top: 1px solid var(--line); counter-increment: setup;
+    }
+    .steps > li::before {
+      content: counter(setup); width: 32px; height: 32px; display: grid; place-items: center;
+      border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 14px;
+    }
+    .steps p:last-child { margin-bottom: 0; }
+    .steps .approval::before { color: var(--paper); background: var(--blue); border-color: var(--blue); }
+    .label { color: var(--blue); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+    .route { padding: 18px 20px; margin: 16px 0; border-left: 3px solid var(--blue); background: var(--wash); border-radius: 0 8px 8px 0; }
+    .route p { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .route-path { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 16px; font-weight: 600; }
+    .arrow { color: var(--muted); font-weight: 400; }
+    .route strong { color: var(--blue); white-space: nowrap; }
+    .help { border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+    details + details { border-top: 1px solid var(--line); }
+    summary { cursor: pointer; padding: 16px 20px; font-size: 15px; font-weight: 600; }
+    details p { margin: 0; padding: 0 20px 18px; font-size: 14px; color: var(--muted); }
+    footer { padding-top: 24px; font-size: 13px; color: var(--muted); }
+    footer p { margin-bottom: 8px; }
+    @media (max-width: 540px) {
+      main { padding: 24px 20px; }
+      .brand span { font-size: 12px; }
+      .steps > li { gap: 12px; grid-template-columns: 28px minmax(0, 1fr); }
+      .steps > li::before { width: 28px; height: 28px; }
+      .route { padding: 14px; }
+      .route-path { display: block; }
+      .route-path > span, .route-path > strong { display: block; }
+      .route-path .arrow { display: none; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper: #202631; --canvas: #171c24; --ink: #f0f3fa; --muted: #b2bed1; --blue: #9ab7ff; --line: #3c475b; --wash: #232f46; }
+      .steps .approval::before { color: var(--canvas); }
+    }
+    @media print {
+      :root { color-scheme: light; --paper: #fff; --canvas: #fff; --ink: #20242b; --muted: #505d70; --blue: #315fdd; --line: #dae1ee; --wash: #edf2ff; }
+      main { padding: 0; }
+      .steps > li { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">
+        <svg viewBox="80 80 864 864" aria-hidden="true">
+          <rect x="80" y="80" width="864" height="864" rx="190" fill="#fff"/>
+          <rect x="348" y="386" width="104" height="252" rx="52" fill="#000"/>
+          <rect x="572" y="386" width="104" height="252" rx="52" fill="#000"/>
+        </svg>
+        SlideMate <span>First launch · macOS 13+</span>
+      </div>
+      <h1>Let's open SlideMate.</h1>
+      <p class="intro">Your Mac may ask you to approve SlideMate before its welcome screen appears. Keep this guide open while you get set up.</p>
+    </header>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <h2>Move SlideMate to Applications</h2>
+          <p>Drag <strong>SlideMate.app</strong> into <strong>Applications</strong>. In a DMG, use the Applications shortcut beside the app. From a ZIP, use the Applications folder in Finder.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h2>Try opening it once</h2>
+          <p>Open <strong>SlideMate from Applications</strong>. If you see “Apple could not verify” or “unidentified developer”, dismiss the alert with <strong>Done</strong>, <strong>OK</strong> or <strong>Cancel</strong>. If the app opens normally, go to step 4.</p>
+        </div>
+      </li>
+      <li class="approval">
+        <div>
+          <p class="label">Only if macOS blocked it</p>
+          <h2>Approve SlideMate in Settings</h2>
+          <p>For a copy you trust from <a href="https://github.com/Mattlo0546/slidemate/releases">SlideMate's official GitHub releases</a>, open the Apple menu and follow this path:</p>
+          <div class="route">
+            <p>On your Mac, go to</p>
+            <div class="route-path">
+              <span>System Settings</span><span class="arrow" aria-hidden="true">→</span>
+              <span>Privacy &amp; Security</span><span class="arrow" aria-hidden="true">→</span>
+              <span>Security</span><span class="arrow" aria-hidden="true">→</span>
+              <strong>Open Anyway</strong>
+            </div>
+          </div>
+          <p>Scroll down to the message about <strong>SlideMate</strong>. Some macOS versions show <strong>Open</strong> before <strong>Open Anyway</strong>. Confirm <strong>Open</strong> if another alert appears, and enter your <strong>Mac login password</strong> if asked.</p>
+          <p>Your Mac remembers this approval for this copy of the app.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h2>Continue in SlideMate</h2>
+          <p>Choose your AI and sign in, then connect your university or open a PDF. If the app hasn't opened yet, open SlideMate from Applications again.</p>
+        </div>
+      </li>
+    </ol>
+
+    <section class="help" aria-label="First-launch help">
+      <details>
+        <summary>I can't see Open Anyway</summary>
+        <p>Try opening SlideMate from Applications again, dismiss the alert, then return to Privacy &amp; Security and scroll down to Security. The option appears for about an hour after an attempted launch. On a university or work Mac, your IT team may need to approve it.</p>
+      </details>
+      <details>
+        <summary>I'm using macOS 13 or 14</summary>
+        <p>You can also Control-click SlideMate in Finder, choose <strong>Open</strong>, then confirm <strong>Open</strong>.</p>
+      </details>
+      <details>
+        <summary>The warning is different, or the app is missing</summary>
+        <p>If macOS says the app “will damage your computer” or “contains malware”, stop and <a href="https://github.com/Mattlo0546/slidemate/issues">report the exact warning</a>. These steps are for verification alerts. If you chose Move to Bin, download a fresh copy from the official release and move it to Applications again.</p>
+      </details>
+      <details>
+        <summary>Do I need Microphone or Accessibility access?</summary>
+        <p>Those are separate. Microphone access is requested when you record a lecture. Accessibility is only needed for the optional AirDrop auto-select feature. Neither is needed just to open SlideMate.</p>
+      </details>
+    </section>
+
+    <footer>
+      <p>This guide works offline. Help links open online.</p>
+      <p><a href="https://github.com/Mattlo0546/slidemate/blob/main/docs/getting-started.md">Full setup guide</a> · <a href="https://support.apple.com/en-gb/102445">Apple's app security guide</a> · <a href="https://support.apple.com/en-gb/guide/mac-help/mh40617/mac">Apple's first-launch steps</a></p>
+    </footer>
+  </main>
+</body>
+</html>

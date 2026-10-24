@@ -111,12 +111,15 @@ The demos use an original sample lecture. Tutor answers were generated with Clau
 ## Get started
 
 1. **Download SlideMate** from the [latest release](https://github.com/Mattlo0546/slidemate/releases/latest). Open the ZIP or DMG supplied with that release and move SlideMate to Applications.
-2. **Choose your AI and sign in.** The welcome flow helps install and connect supported providers. You do not need a separate SlideMate account.
-3. **Connect your university or open a PDF.** Let SlideMate pull and organise your course materials, then open a slide and start asking questions.
+2. **Open SlideMate from Applications.** If macOS says Apple could not verify it, dismiss the alert, then go to **System Settings → Privacy & Security → Security → Open Anyway** for SlideMate. Confirm **Open** and enter your Mac login password if asked. [First-launch walkthrough and help →](docs/getting-started.md#first-launch)
+3. **Choose your AI and sign in.** The welcome flow helps install and connect supported providers. You do not need a separate SlideMate account.
+4. **Connect your university or open a PDF.** Let SlideMate pull and organise your course materials, then open a slide and start asking questions.
+
+> **Opening it for the first time?** The current download is not Apple-notarised, so macOS may ask you to approve SlideMate before the welcome screen can appear. Only approve a copy you trust from [this repository's releases](https://github.com/Mattlo0546/slidemate/releases). If **Open Anyway** is missing, try opening SlideMate once more, then return to Settings.
 
 **Requirements:** macOS 13 or later, on Apple Silicon or Intel. Local audio transcription requires **Apple Silicon** and the Parakeet model download. iPad auto-select requires the AirDrop helper's Accessibility permission and your device name.
 
-> **Release status:** the current download is **v0.5.0**, distributed as a ZIP. This README describes current `main`; university search, the expanded connector directory and DMG packaging include changes newer than that release. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
+> **Release status:** **v0.6.0** includes guided setup, university search, the expanded connector directory, and an offline **Start Here.html** guide beside the app in both DMG and ZIP downloads. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
 
 [Installation and first launch →](docs/getting-started.md) · [AI accounts and local models →](docs/getting-started.md#choose-your-ai) · [University setup →](docs/getting-started.md#connect-your-university)
 
