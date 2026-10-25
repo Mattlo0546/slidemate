@@ -480,6 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
             var clean = line.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
             if clean.hasPrefix("### ") { clean = String(clean.dropFirst(4)) }
             if clean.hasPrefix("- ") { clean = "• " + clean.dropFirst(2) }
+            else if clean.range(of: #"^\d+\. "#, options: .regularExpression) != nil { }  // numbered steps keep their own line
             else if !clean.isEmpty, let last = lines.last, !last.isEmpty, !raw.hasPrefix("#") {
                 lines[lines.count - 1] = last + " " + clean; continue  // a wrapped line continues the one above
             }

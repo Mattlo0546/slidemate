@@ -1,4 +1,4 @@
-### New here? Start with these steps
+### Install: new here? Start with these steps
 
 1. Download **SlideMate-…-macOS.dmg** from Assets below, open it and drag **SlideMate** to **Applications**. If you choose the ZIP instead, unzip it and move the app to Applications. Choose the app download, not a “Source code” archive.
 2. Open **SlideMate from Applications**. If macOS says Apple could not verify it, dismiss the alert. After checking you trust this official download, open **System Settings → Privacy & Security**, scroll to **Security** and click **Open Anyway** for SlideMate. Confirm **Open** and enter your Mac login password if asked.
