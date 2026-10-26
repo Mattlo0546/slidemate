@@ -1128,6 +1128,7 @@ $('#askForm').addEventListener('submit', (e) => {
   }
   const v = $('#askInput').value;
   $('#askInput').value = '';
+  sugg.live = null; sugg.dismissedDraft = ''; sugg.rev++; clearTimeout(sugg.timer); sugg.abort?.abort();
   autosize();
   ask(v);
 });
@@ -1143,12 +1144,12 @@ const autosize = () => {
   t.style.height = Math.min(h, ASK_MAX) + 'px';
   t.style.overflowY = h > ASK_MAX ? 'auto' : 'hidden';
 };
-$('#askInput').addEventListener('input', () => { autosize(); paintGhost(); });
+$('#askInput').addEventListener('input', () => { autosize(); paintGhost(); scheduleLive(); });
 $('#askInput').addEventListener('keydown', (e) => {
   if ((e.key === 'Tab' || e.key === 'ArrowRight') && !e.isComposing && acceptGhost(e)) return;
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#askForm').requestSubmit(); }
   if (e.key === 'Escape') {
-    if ($('#askGhost').textContent && !e.target.value) { sugg.hidden.add(suggKey()); showSuggestions(); return; }  // dismiss the suggestion first
+    if (dismissGhost()) return;  // dismiss the suggestion first
     pendingSnip = null; updatePlaceholder(); e.target.blur();
   }
 });
@@ -1284,9 +1285,16 @@ window.addEventListener('keydown', (e) => {  // 1–4 rate the quiz card (when y
 
 // ---------- question suggestions: grey text in the ask box, Tab to use it (like Codex / Claude Code) ----------
 // Per slide: starter questions written once per deck by the lightest model. After an answer: follow-ups for that
-// slide replace them. While you type, a suggestion that starts with your text completes it inline.
-const sugg = { starters: new Map(), follow: new Map(), list: [], idx: 0, hidden: new Set(), poll: 0 };
+// slide replace them. While you type: a listed suggestion that starts with your text completes it at once; otherwise,
+// after a pause, the engine finishes your question (study skills picked for the subject; see suggest.py / skills.py).
+// Every keystroke is a new revision; only the newest request's answer is shown, except that an older finished
+// suggestion stays usable while what you type is exactly its beginning (Agentcomplete's prefix adoption).
+const sugg = { starters: new Map(), follow: new Map(), meta: new Map(), list: [], idx: 0, hidden: new Set(), poll: 0,
+               live: null, rev: 0, timer: 0, abort: null };
+const LIVE_DELAY = 600;   // ms of quiet before asking the engine to finish a question
+const LIVE_TTL = 90_000;  // an unused live suggestion expires
 const suggKey = (path = state.path, page = state.current) => `${path}#${page}`;
+const newId = () => (crypto.randomUUID?.() || Math.random().toString(16).slice(2) + Date.now().toString(16)).replace(/-/g, '').slice(0, 16);
 async function loadSuggestions(page = state.current) {
   const path = state.path;
   if (!path) return;
@@ -1295,7 +1303,7 @@ async function loadSuggestions(page = state.current) {
   if (!sugg.starters.has(key)) {
     try {
       const r = await (await api(`/api/suggest?path=${encodeURIComponent(path)}&page=${page}`)).json();
-      if (r.state === 'ready') sugg.starters.set(key, r.questions);
+      if (r.state === 'ready') { sugg.starters.set(key, r.questions); sugg.meta.set('s:' + key, { id: r.id, skills: r.skills || [], source: 'starter' }); }
       else if (r.state === 'making') sugg.poll = setTimeout(() => { if (suggKey() === key) loadSuggestions(page); }, 6000);
     } catch {}
   }
@@ -1304,6 +1312,7 @@ async function loadSuggestions(page = state.current) {
 function showSuggestions() {
   const key = suggKey();
   sugg.list = sugg.hidden.has(key) ? [] : (sugg.follow.get(key) || sugg.starters.get(key) || []);
+  sugg.listMeta = sugg.meta.get((sugg.follow.has(key) ? 'f:' : 's:') + key);
   sugg.idx = 0;
   paintGhost();
 }
@@ -1313,44 +1322,108 @@ async function fetchFollowups(path, page) {
     if (!r.questions?.length) return;
     const key = suggKey(path, page);
     sugg.follow.set(key, r.questions);
+    sugg.meta.set('f:' + key, { id: r.id, skills: r.skills || [], source: 'followup' });
     sugg.hidden.delete(key);
     if (suggKey() === key) showSuggestions();
   } catch {}
 }
-// The suggestion that fits what's typed: the current one when the box is empty, else one that starts with it.
+// The suggestion that fits what's typed → {text: the whole question, meta} or null: the current listed one when the
+// box is empty; else a listed one that starts with what's typed; else the engine's completion, if what's typed is
+// still exactly the beginning of it.
 function ghostMatch() {
-  const v = $('#askInput').value;
-  if (pendingSnip || pendingPics.length || !sugg.list.length || cfg.chat_suggestions === false) return null;
-  if (!v) return sugg.list[sugg.idx];
-  if (v.length < 2 || v.includes('\n')) return null;
+  const t = $('#askInput'), v = t.value;
+  if (pendingSnip || pendingPics.length || cfg.chat_suggestions === false) return null;
+  if (!v) return sugg.list.length ? { text: sugg.list[sugg.idx], meta: sugg.listMeta } : null;
+  if (v.length < 2 || v.includes('\n') || t.selectionEnd !== v.length) return null;
   const lv = v.toLowerCase();
-  return sugg.list.find((s) => s.length > v.length && s.toLowerCase().startsWith(lv)) || null;
+  const listed = sugg.list.find((s) => s.length > v.length && s.toLowerCase().startsWith(lv));
+  if (listed) return { text: listed, meta: sugg.listMeta };
+  const l = sugg.live;
+  if (l && l.key === suggKey() && Date.now() - l.at < LIVE_TTL && v.length >= l.draft.length) {
+    const full = l.draft + l.text;
+    if (full.length > v.length && full.toLowerCase().startsWith(lv)) return { text: v + full.slice(v.length), meta: l };
+  }
+  return null;
 }
 function paintGhost() {
-  const t = $('#askInput'), g = $('#askGhost'), s = ghostMatch(), v = t.value;
-  if (!s || t.scrollHeight > ASK_MAX) { g.innerHTML = ''; t.placeholder = t.dataset.ph || 'Ask about this slide'; return; }
+  const t = $('#askInput'), g = $('#askGhost'), m = ghostMatch(), v = t.value;
+  const why = $('#suggWhy');
+  if (!m || t.scrollHeight > ASK_MAX) {
+    g.innerHTML = ''; t.placeholder = t.dataset.ph || 'Ask about this slide';
+    why.hidden = true; $('#chatCtx').hidden = false;
+    return;
+  }
   t.placeholder = '';
   g.innerHTML = v
-    ? `<span class="typed">${esc(v)}</span>${esc(s.slice(v.length))}`
-    : `${esc(s)}<kbd>Tab</kbd>${sugg.list.length > 1 ? `<span class="n">${sugg.idx + 1}/${sugg.list.length}</span>` : ''}`;
+    ? `<span class="typed">${esc(v)}</span>${esc(m.text.slice(v.length))}`
+    : `${esc(m.text)}<kbd>Tab</kbd>${sugg.list.length > 1 ? `<span class="n">${sugg.idx + 1}/${sugg.list.length}</span>` : ''}`;
+  const skills = m.meta?.skills || [];
+  why.hidden = !skills.length;
+  $('#chatCtx').hidden = !why.hidden;  // the hint takes the context line's place while a suggestion shows
+  why.textContent = skills.length ? `Suggested with: ${skills.slice(0, 2).join(' · ')}` : '';
+}
+function sendOutcome(meta, outcome) {
+  if (meta?.id) post('/api/suggest/outcome', { id: meta.id, outcome, source: meta.source || '' }).catch(() => {});
 }
 // Tab: use the suggestion (or the next one, if the box already holds one). → at the end also completes.
 function acceptGhost(e) {
-  const t = $('#askInput'), v = t.value, s = ghostMatch();
+  const t = $('#askInput'), v = t.value, m = ghostMatch();
   const atEnd = t.selectionStart === v.length && t.selectionEnd === v.length;
-  if (e.key === 'Tab' && !e.shiftKey && !s && sugg.list.length > 1 && sugg.list.includes(v)) {
+  if (e.key === 'Tab' && !e.shiftKey && !m && sugg.list.length > 1 && sugg.list.includes(v)) {
     sugg.idx = (sugg.list.indexOf(v) + 1) % sugg.list.length;
     t.value = sugg.list[sugg.idx];
-  } else if (s && (e.key === 'Tab' && !e.shiftKey || e.key === 'ArrowRight' && v && atEnd)) {
-    t.value = s;
-    sugg.idx = sugg.list.indexOf(s);
+  } else if (m && (e.key === 'Tab' && !e.shiftKey || e.key === 'ArrowRight' && v && atEnd)) {
+    t.value = m.text;
+    if (sugg.list.includes(m.text)) sugg.idx = sugg.list.indexOf(m.text);
+    sendOutcome(m.meta, 'accepted');
   } else return false;
   e.preventDefault();
+  sugg.rev++;
+  clearTimeout(sugg.timer);
+  sugg.abort?.abort();
   autosize();
   t.setSelectionRange(t.value.length, t.value.length);
   paintGhost();
   return true;
 }
+// Esc on a visible suggestion: hide it (empty box: this slide's list; typing: the engine's completion).
+function dismissGhost() {
+  const m = ghostMatch();
+  if (!m || !$('#askGhost').textContent) return false;
+  sendOutcome(m.meta, 'dismissed');
+  if ($('#askInput').value) { sugg.live = null; sugg.dismissedDraft = $('#askInput').value; }
+  else sugg.hidden.add(suggKey());
+  showSuggestions();
+  return true;
+}
+// After a pause in typing (cursor at the end, nothing listed fits), ask the engine to finish the question.
+function scheduleLive() {
+  const t = $('#askInput'), v = t.value, rev = ++sugg.rev;
+  clearTimeout(sugg.timer);
+  sugg.abort?.abort();
+  if (!state.path || state.busy || ghostMatch() || v === sugg.dismissedDraft || v.trim().split(/\s+/).length < 2
+      || t.selectionEnd !== v.length || v.includes('\n') || cfg.chat_suggestions === false) return;
+  sugg.timer = setTimeout(async () => {
+    const path = state.path, page = state.current, key = suggKey(), id = newId();
+    const ctl = sugg.abort = new AbortController();
+    try {
+      const res = await api('/api/suggest/complete', { method: 'POST', signal: ctl.signal, body: JSON.stringify({ path, page, draft: v, id }) });
+      const r = await res.json();
+      if (r.type !== 'autocomplete' || suggKey() !== key) return;
+      // Kept even if you've typed on: it's shown while your text is still exactly its beginning.
+      sugg.live = { key, draft: v, text: r.text, id: r.id, skills: r.skills || [], source: 'live', at: Date.now() };
+      if (rev === sugg.rev || $('#askInput').value.startsWith(v)) paintGhost();
+    } catch {}
+  }, LIVE_DELAY);
+}
+async function renderSkills() {
+  let r;
+  try { r = await (await api('/api/skills')).json(); } catch { return; }
+  $('#skillList').innerHTML = r.skills.map((k) => `<div class="skill-row" title="${esc(k.summary)}"><b>${esc(k.title)}</b>
+    <span class="tags">${esc(k.tags.slice(0, 5).join(', '))}${k.own ? ' · yours' : ''}</span>
+    <span class="n">${k.kept ? `used ${k.kept}×${k.used ? ` · ${k.used} accepted` : ''}` : ''}</span></div>`).join('');
+}
+$('#btnSkillsFolder').onclick = () => post('/api/skills/folder').then(() => toast('Add a .md file per skill (see README.txt there). They apply to new suggestions.', false, 6000));
 $('#btnReset').onclick = async () => {
   if (!state.path) return;
   if (chatFor(state.path).length && !confirm('Start a fresh chat for this deck?\n\nThe current conversation is archived (still saved on disk), and Claude starts over without it.')) return;
@@ -1570,6 +1643,7 @@ async function openSettings(pane) {
   $('#setCardsAuto').checked = cfg.cards_auto !== false;
   $('#setCardsChats').checked = cfg.cards_from_chats !== false;
   $('#setSuggest').checked = cfg.chat_suggestions !== false;
+  renderSkills();
   $('#setCardsNew').value = cfg.cards_new_per_day ?? 20;
   $('#setCardsRetention').value = String(cfg.cards_retention ?? 0.9);
   $('#setAirdrop').checked = cfg.airdrop;

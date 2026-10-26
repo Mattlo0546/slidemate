@@ -166,6 +166,7 @@
       </form>
       <div id="composerBar">
         <div id="chatCtx"></div>
+        <div id="suggWhy" hidden></div>
         <button id="ctxRing" class="ghost" title="Context and plan usage">
           <svg viewBox="0 0 20 20" class="ringsvg"><circle cx="10" cy="10" r="7.5" class="bg"/><circle cx="10" cy="10" r="7.5" class="fg" id="ringFg"/></svg>
         </button>
@@ -265,9 +266,16 @@
           <div class="set-group" id="modelRow"></div>
           <div class="set-group">
             <label class="set-row">
-              <div class="set-label"><b>Suggest questions</b><span>Not sure what to ask? Grey suggestions appear in the ask box for each slide and after each answer: press Tab to use one. Written by the lightest model (e.g. Haiku), once per deck, from the slides and what the lecturer said.</span></div>
+              <div class="set-label"><b>Suggest questions</b><span>Not sure what to ask? Grey suggestions appear in the ask box for each slide and after each answer, and finish your question while you type: press Tab to use one. Written by the lightest model (e.g. Haiku) from the slides, what the lecturer said, and the study skills below.</span></div>
               <input type="checkbox" class="switch" id="setSuggest">
             </label>
+          </div>
+          <div class="set-group">
+            <div class="set-row">
+              <div class="set-label"><b>Study skills</b><span>Ways of asking good questions in each subject. For every suggestion the AI reviews the skills that fit the slide and keeps only the useful ones. Add your own as Markdown files.</span></div>
+              <div class="set-actions"><button type="button" class="small" id="btnSkillsFolder">Add your own</button></div>
+            </div>
+            <div id="skillList"></div>
           </div>
         </section>
 
