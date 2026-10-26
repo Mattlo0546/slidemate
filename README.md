@@ -88,6 +88,21 @@ Review with spaced repetition. **FSRS**, the scheduler Anki uses, brings each ca
 subject: arguments and objections for philosophy, mechanisms and trade-offs for engineering, formulas, derivation
 steps and short problems for maths. Press <kbd>R</kbd> to review, and export any deck to Anki.
 
+**Quiz me** (or <kbd>Q</kbd>) brings the flashcards for the slide you're on into the chat: answer from memory, reveal,
+rate. It's the same FSRS review, so it counts towards your schedule.
+
+### 💡 Never stuck for what to ask
+Not sure what to ask, or "explain" feels too vague? Grey suggestions appear in the ask box, the way Codex and Claude
+Code suggest your next prompt: specific questions for each slide, follow-ups after every answer, and the rest of your
+question while you type. Press <kbd>Tab</kbd> to use one, <kbd>Tab</kbd> again for the next, <kbd>Esc</kbd> to hide.
+
+They're built on the research on good learning questions ("why does…", "how does X differ from Y", "what would happen
+if…") and on **study skills**: ways of asking good questions in each subject, like reconstructing an argument in
+philosophy, justifying each step of a derivation in maths, or the trade-offs behind a design in engineering. The
+engine comes from my [Agentcomplete](https://github.com/Mattlo0546/Agentcomplete) prompt-autocomplete project,
+with study skills in place of its coding knowledge (see [How it works](#how-it-works)). Add your own skills under
+Settings → AI tutor → Study skills.
+
 ### And also
 - **Chats saved per slide**: revisit a slide before the exam and your questions are still there. Also saved as Markdown
   (handy for Obsidian).
@@ -113,6 +128,7 @@ steps and short problems for maths. Press <kbd>R</kbd> to review, and export any
 | Slide → iPad in one click | Yes (AirDrop + clipboard) | No | No |
 | Chats saved per slide | Yes | One long chat | One notebook chat |
 | Flashcards from the lecture + your questions | Yes, spaced repetition (FSRS) | No | Generic flashcards |
+| Suggests what to ask, per slide and subject | Yes, as you type | Generic follow-ups | Suggested questions for the whole source |
 | Where it runs | On your Mac (open source) | Web | Web |
 | Cost | Free; uses your existing AI plan, a free Google account, or a model on your Mac | Your plan | Varies |
 
@@ -216,7 +232,8 @@ Slides/                   ← SlideMate's folder, or any folder you add
 ```
 
 SlideMate's own data lives in `~/Library/Application Support/SlideMate`: settings, chats, lecture recordings and
-notes, flashcards and your review history. Screenshots you send to the iPad are saved in `~/Pictures/SlideMate`.
+notes, flashcards and your review history. Your own study skills go in its `study-skills` folder. Screenshots you
+send to the iPad are saved in `~/Pictures/SlideMate`.
 
 ## Send to iPad auto-select
 
@@ -304,6 +321,11 @@ plan, it works with a free Google account (Antigravity) or a model on your Mac (
 general "chat with your sources" tools, it's a slide viewer first: the tutor answers about the slide in front of you,
 with the whole deck as context.
 
+**I don't know what to ask about a slide. Can it help?**
+Yes. The ask box suggests specific questions for each slide and follow-ups after each answer, and finishes your
+question as you type (<kbd>Tab</kbd> to use one). They're tuned to the subject by study skills, and never just
+"explain this". For testing yourself, **Quiz me** uses that slide's flashcards.
+
 **Windows? iPad app?**
 Not yet. It's macOS 13+ (Apple Silicon and Intel), and sends slides to your iPad.
 
@@ -322,11 +344,39 @@ starts the server and shows the UI.
 | Your university (finding it; Canvas / Moodle / Blackboard / Google Classroom) | `server/university.py`, `server/static/universities.json`, logos in `server/static/logos/` |
 | Things SlideMate installs for itself (uv, Parakeet, ffmpeg) | `server/tools.py` |
 | Lecture recording → notes | `server/lecture.py` |
-| Flashcards + FSRS scheduling | `server/flashcards.py` |
+| Flashcards + FSRS scheduling, Quiz me | `server/flashcards.py` |
+| Question suggestions + autocomplete | `server/suggest.py` |
+| Study skills + the router that picks them | `server/skills.py`, `server/study_skills/*.md` |
 | UI | `server/static/` |
 | Native app (window, updater) + AirDrop helper | `macos/` |
 
 The server only listens on localhost and requires a custom header on every API call, so web pages can't reach it.
+
+### Question suggestions
+
+The suggestion engine is adapted from [Agentcomplete](https://github.com/Mattlo0546/Agentcomplete), my prompt
+companion for Codex, which retrieves skills and examples and suggests ghost text while you type. SlideMate keeps its
+pipeline and swaps the coding knowledge for 13 study skills (maths derivations, worked problems, statistics,
+machine learning, programming, philosophy, history and politics, literature, engineering, natural sciences,
+economics, law, exam focus):
+
+1. **Route.** Send every skill when the whole catalog fits the request's budget. Otherwise take a lexical shortlist
+   (tag / title / summary / body weights 4 / 3 / 2 / 0.5, IDF-ranked, up to 3; a skill must match on its metadata).
+   Otherwise fall back to the subject, from the course name and the deck's type. Agentcomplete's third route,
+   tags + pgvector, needs a database; SlideMate has none.
+2. **Review and write in one call.** The lightest model (Haiku at low effort with Claude) marks every candidate
+   skill keep / don't keep with a 0–1 score, uses only those kept with a score of at least 0.5, and writes the
+   questions in the same reply.
+3. **Validate.** The review must cover every skill, a completion must join your half-typed word correctly, there's
+   one question, and never "quiz me". Invalid output gets one retry with the reason; a second failure shows nothing.
+   A suggestion made while the skill files changed is dropped.
+4. **While you type.** After a 600 ms pause, one completion runs per deck and newer requests replace waiting ones.
+   An older suggestion stays usable while what you type is still exactly its beginning.
+5. **Trace.** A local log records which skills were kept, how long it took, and whether you used or dismissed the
+   suggestion: metadata only, never your slides or questions. It feeds the usage counts in Settings.
+
+Per-slide questions are written once per deck and saved; follow-ups and completions are small calls with the slide,
+what the lecturer said about it, and your question so far.
 
 ## Development
 
