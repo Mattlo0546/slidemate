@@ -654,6 +654,25 @@ mark.cloze-a { background: rgba(59,130,246,.16); color: inherit; border-radius: 
 .study-card .thumb { flex-direction: column; align-items: flex-start; padding: 5px; border-radius: 10px; gap: 4px; background: var(--raise); }
 .study-card .thumb img { width: 240px; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; background: #fff; display: block; }
 .study-card .thumb span { font-size: 11.5px; color: var(--muted); padding: 0 2px; }
+/* Ask the tutor about a card without leaving the study view (never saved to the deck's chat) */
+#cardTutor { margin-top: 18px; border: 1px solid var(--border-strong); border-radius: 14px; padding: 10px 14px 12px; background: var(--raise); font-size: 14.5px; line-height: 1.6; }
+#cardTutor .ct-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+#cardTutor .ct-head b { color: var(--text-2); font-weight: 600; }
+#cardTutor .ct-head > svg { width: 14px; height: 14px; }
+#cardTutor .ct-head .sp { flex: 1; }
+#cardTutor .ct-head button.icon { width: 24px; height: 24px; }
+#cardTutor .ct-msgs { display: flex; flex-direction: column; gap: 12px; }
+#cardTutor .msg.user { font-size: 13.5px; }
+#cardTutor .ct-ask { display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; border: 1px solid var(--border-strong); border-radius: 18px; padding: 4px 4px 4px 12px; background: var(--panel); }
+#cardTutor .ct-ask:focus-within { border-color: var(--ring); }
+#cardTutor textarea { flex: 1; resize: none; border: 0; outline: none; background: none; padding: 4px 0; font: inherit; font-size: 14px; line-height: 1.45; color: var(--text); min-height: calc(1.45em + 8px); overflow-y: hidden; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+#cardTutor textarea::-webkit-scrollbar:horizontal { display: none; height: 0; }
+#cardTutor textarea::-webkit-scrollbar { width: 6px; height: 0; }
+#cardTutor textarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#cardTutor .send { width: 28px; height: 28px; padding: 0; justify-content: center; background: var(--primary); color: var(--primary-ink); border: 0; flex: none; }
+#cardTutor .send:hover { opacity: .85; }
+#cardTutor .send.stop { background: var(--text); }
+#cardTutor .send.stop svg { fill: var(--primary-ink); stroke: none; width: 12px; height: 12px; }
 /* Quiz me: a flashcard inside the chat */
 .quiz { border: 1px solid var(--border-strong); border-radius: 14px; padding: 10px 12px 12px; background: var(--raise); font-size: 14px; line-height: 1.55; }
 .quiz-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }

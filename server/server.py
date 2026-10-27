@@ -51,6 +51,30 @@ def get_session(path):
         return SESSIONS[key]
 
 
+# "Ask the tutor" inside a flashcard study session: its own tutor per (study session, deck), so the deck's chat
+# neither sees nor saves it. Closed when the study session ends, or after half an hour unused.
+CARD_TUTORS = {}
+CARD_TUTOR_IDLE = 30 * 60
+
+
+def card_tutor(chat_id, path):
+    with SESSIONS_LOCK:
+        for k in [k for k, s in CARD_TUTORS.items() if time.time() - s.last_used > CARD_TUTOR_IDLE]:
+            CARD_TUTORS.pop(k).close()
+        if (chat_id, path) not in CARD_TUTORS:
+            CARD_TUTORS[(chat_id, path)] = providers.current().session(path, providers.model_for("chat"))
+        return CARD_TUTORS[(chat_id, path)]
+
+
+def end_card_tutors(chat_id, close=True):
+    with SESSIONS_LOCK:
+        hits = [k for k in CARD_TUTORS if k[0] == chat_id]
+        sessions = [CARD_TUTORS.pop(k) if close else CARD_TUTORS[k] for k in hits]
+    for sess in sessions:
+        sess.close() if close else sess.cancel()
+    return len(sessions)
+
+
 def tutor_context(path):
     """Lecture notes + earlier conversation, given to a fresh tutor session so it remembers."""
     parts = []
@@ -440,6 +464,12 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path
         if p == "/api/chat":
             return self._chat(body)
+        if p == "/api/cards/ask":
+            return self._card_chat(body)
+        if p == "/api/cards/ask/stop":
+            return self._json({"ok": True, "stopped": end_card_tutors(body.get("chat_id"), close=False)})
+        if p == "/api/cards/ask/end":
+            return self._json({"ok": True, "closed": end_card_tutors(body.get("chat_id"))})
         if p == "/api/stop":
             with SESSIONS_LOCK:
                 targets = [sess for k, sess in SESSIONS.items() if k[0] == body.get("path")]
@@ -673,6 +703,44 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
+    def _card_chat(self, body):
+        """A question about a flashcard from the study view: streamed like _chat, but never saved."""
+        path, chat_id = body.get("path", ""), str(body.get("chat_id") or "")
+        if not os.path.isfile(path) or not chat_id:
+            return self._json({"error": "no pdf"}, 400)
+        sess = card_tutor(chat_id, path)
+        img = body.get("image") or ""
+        img = img.split(",", 1)[1] if "," in img else img
+        page = int(body.get("page") or 1)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        question = body.get("question", "")
+        here = lecture.slide_notes(path, page)
+        if here:
+            question = f"{here}\n\n---\n\n{question}"
+        for chunk in sess.ask(question, page, providers.page_count(path) or page, img, tutor_context(path)):
+            if isinstance(chunk, tuple):
+                if chunk[0] == "usage":
+                    continue
+                msg = f"event: {chunk[0]}\ndata: {json.dumps(chunk[1])}\n\n"
+            else:
+                msg = f"data: {json.dumps(chunk)}\n\n"
+            try:
+                self.wfile.write(msg.encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                sess.cancel()  # nobody is reading, and nothing is saved: stop it
+                return
+        try:
+            self.wfile.write(b"event: done\ndata: {}\n\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send(self, body):
         cfg = config.load()

@@ -2705,7 +2705,8 @@ async function startStudy(scope = 'all', subtopic = '', title = '', revised = fa
   try { r = await (await api(`/api/cards/queue?scope=${encodeURIComponent(scope)}&subtopic=${encodeURIComponent(subtopic)}${revised ? '&revised=1' : ''}`)).json(); }
   catch { return toast('Couldn\'t load your cards', true); }
   study = { scope, subtopic, title: title || 'All courses', main: r.cards.filter((c) => !isLearning(c)), learning: r.cards.filter(isLearning),
-            learnAhead: r.learn_ahead, moreNew: r.more_new, cur: null, revealed: false, done: 0, firstTry: 0, seen: new Set(), history: [], busy: false };
+            learnAhead: r.learn_ahead, moreNew: r.more_new, cur: null, revealed: false, done: 0, firstTry: 0, seen: new Set(), history: [], busy: false,
+            chatId: Math.random().toString(36).slice(2), tutor: null };
   study.total = r.cards.length;
   $('#hub').hidden = true;
   $('#study').hidden = false;
@@ -2714,6 +2715,7 @@ async function startStudy(scope = 'all', subtopic = '', title = '', revised = fa
 }
 function closeStudy() {
   $('#study').hidden = true;
+  if (study) { stopCardTutor(); post('/api/cards/ask/end', { chat_id: study.chatId }).catch(() => {}); }
   study = null;
   if ($('#hub').hidden) document.body.classList.remove('studying');
   loadCardsOverview();
@@ -2727,7 +2729,8 @@ function nextCard() {
   if (l && l.srs.due <= now) c = study.learning.shift();
   else if (study.main.length) c = study.main.shift();
   else if (l && l.srs.due - now <= study.learnAhead) c = study.learning.shift();  // nothing else left: show it a little early
-  Object.assign(study, { cur: c, revealed: false, typed: '', editing: false });
+  stopCardTutor();
+  Object.assign(study, { cur: c, revealed: false, typed: '', editing: false, tutor: null });
   renderStudy();
 }
 const remaining = () => study.main.length + study.learning.length + (study.cur ? 1 : 0);
@@ -2770,11 +2773,13 @@ function renderStudy() {
       <div class="face back">${cardBack(c, false)}</div>
       ${c.why ? `<div class="why">${mdRender(c.why, false)}</div>` : ''}
       <div class="from">${slides.map((n) => `<button class="thumb" data-sa="slide" data-n="${n}" title="Open slide ${n}"><img data-thumb="${n}" alt=""><span>Slide ${n}</span></button>`).join('')}
-        <button class="small ghost" data-sa="ask">${icon('sparkle')}Still unclear? Ask the tutor</button></div>`;
+        ${study.tutor ? '' : `<button class="small ghost" data-sa="ask">${icon('sparkle')}Still unclear? Ask the tutor</button>`}</div>
+      ${study.tutor ? '<div id="cardTutor"></div>' : ''}`;
   }
   const rate = study.revealed && !study.editing ? `<div class="study-rate">${RATE.map(([g, l]) => `<button data-rate="${g}" class="r${g}"><b>${l}</b><span>${c.previews?.[g] || ''}</span><kbd>${g}</kbd></button>`).join('')}</div>` : '';
   el.innerHTML = top + `<div class="study-scroll"><div class="study-card${study.revealed ? ' revealed' : ''}">${meta}${body}</div></div>${rate}`;
   if (study.revealed) {
+    renderCardTutor();
     el.querySelectorAll('img[data-thumb]').forEach((img) => slideThumb(c.path, +img.dataset.thumb).then((u) => { img.src = u; }, () => img.closest('.thumb').remove()));
   } else if (!study.editing) {
     const t = $('#typed');
@@ -2821,14 +2826,108 @@ async function undoLast() {
   Object.assign(study, { cur: { ...h.card, ...r.card }, revealed: true, editing: false });
   renderStudy();
 }
-async function askAboutCard(c) {
-  const slide = c.slides?.[0];
-  closeStudy();
-  if (state.path !== c.path) await openPdf(c.path, slide);
-  else if (slide) goTo(slide);
-  setPanelTab('chat');
+// "Still unclear? Ask the tutor": a short chat under the card, without leaving the study view. It has the deck,
+// the lecture notes and your chat history for context, but it's never saved to the deck's chat.
+function cardTutorPrompt(c) {
   const answer = c.type === 'cloze' ? plainCard(c.front) + (c.back ? ' ' + c.back : '') : c.back;
-  ask(`I'm revising with flashcards and this one didn't stick:\n\nQ: ${c.type === 'cloze' ? c.front.replace(CLOZE_RE, '[…]') : c.front}\nA: ${answer}\n\nHelp me actually understand it (a different angle from the card, tied to the slides), then check me with one quick question.`);
+  return `I'm revising with flashcards and this one didn't stick:\n\nQ: ${c.type === 'cloze' ? c.front.replace(CLOZE_RE, '[…]') : c.front}\nA: ${answer}\n\n`
+    + (study.typed ? `What I answered from memory: ${study.typed}\n\n` : '')
+    + 'Help me actually understand it (a different angle from the card, tied to the slides), then check me with one quick question.';
+}
+function renderCardTutor(focus = false) {
+  const el = $('#cardTutor'), t = study?.tutor;
+  if (!el || !t) return;
+  el.innerHTML = `<div class="ct-head">${icon('sparkle')}<b>Tutor</b><span>· not saved to the deck's chat</span><span class="sp"></span>
+      <button class="ghost icon" data-sa="tclose" title="Close">${icon('x')}</button></div>
+    <div class="ct-msgs">${t.msgs.map((m) => `<div class="msg ${m.role}">${m.role === 'bot' ? '' : esc(m.label || m.text)}</div>`).join('')}</div>
+    <form class="ct-ask"><textarea rows="1" placeholder="Ask a follow-up or answer its question…"></textarea>
+      <button class="send" type="submit"></button></form>`;
+  el.querySelectorAll('.msg.bot').forEach((d, i) => paintTutorMsg(d, t.msgs.filter((m) => m.role === 'bot')[i]));
+  const box = el.querySelector('textarea'), form = el.querySelector('form');
+  growBox(box, 160);
+  if (focus) box.focus({ preventScroll: true });  // typing a follow-up: keep typing (Esc leaves the box)
+  box.addEventListener('input', () => growBox(box, 160));
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (t.busy) return e.submitter ? stopCardTutor() : null;
+    const q = box.value.trim();
+    if (q) askCardTutor(q);
+  });
+  paintTutorSend();
+}
+function paintTutorMsg(d, m) {
+  d.classList.toggle('thinking', !m.text);
+  if (!m.text) { if (m.status) d.dataset.status = m.status; return; }
+  d.innerHTML = (m.status ? `<div class="tool-status"><span class="spinner"></span>${esc(m.status)}</div>` : '') + mdRender(m.text, false);
+}
+function paintTutorSend() {
+  const b = $('#cardTutor .send');
+  if (!b) return;
+  const busy = study?.tutor?.busy;
+  b.classList.toggle('stop', !!busy);
+  b.title = busy ? 'Stop' : 'Send (Enter)';
+  b.innerHTML = icon(busy ? 'stop' : 'up');
+}
+async function askCardTutor(question, label = '') {
+  const c = study?.cur, t = study?.tutor;
+  if (!c || !t || t.busy) return;
+  const first = !t.msgs.length, slide = c.slides?.[0] || 1;
+  const bot = { role: 'bot', text: '', status: '' };
+  t.msgs.push({ role: 'user', text: question, label }, bot);
+  t.busy = true;
+  t.abort = new AbortController();
+  renderCardTutor(!label);
+  const scroller = $('#study .study-scroll');
+  scroller.scrollTop = scroller.scrollHeight;
+  const botEl = () => (study?.tutor === t ? [...document.querySelectorAll('#cardTutor .msg.bot')].at(-1) : null);
+  const image = first && c.slides?.length ? await slideThumb(c.path, slide).catch(() => '') : '';
+  let raf = 0;
+  const paint = () => {
+    raf = 0;
+    const d = botEl();
+    if (!d) return;
+    const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 140;
+    paintTutorMsg(d, bot);
+    if (stick) scroller.scrollTop = scroller.scrollHeight;
+  };
+  try {
+    const res = await api('/api/cards/ask', { method: 'POST', signal: t.abort.signal,
+      body: JSON.stringify({ chat_id: study.chatId, path: c.path, page: slide, question, image }) });
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const line = block.split('\n').find((l) => l.startsWith('data: '));
+        if (!line || block.startsWith('event: done')) continue;
+        if (block.startsWith('event: status')) bot.status = JSON.parse(line.slice(6));
+        else if (!block.startsWith('event:')) { bot.text += JSON.parse(line.slice(6)); bot.status = ''; }
+        if (!raf) raf = requestAnimationFrame(paint);
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') bot.text = bot.text.trim() ? bot.text.trimEnd() + '\n\n_(stopped)_' : '_Stopped before answering._';
+    else bot.text += `\n\n**Error:** ${e.message}`;
+  } finally {
+    bot.status = '';
+    t.busy = false;
+    t.abort = null;
+    paint();
+    paintTutorSend();
+  }
+}
+function stopCardTutor() {
+  const t = study?.tutor;
+  if (!t?.busy) return;
+  t.abort?.abort();
+  post('/api/cards/ask/stop', { chat_id: study.chatId }).catch(() => {});
 }
 $('#study').addEventListener('click', async (e) => {
   const rb = e.target.closest('[data-rate]');
@@ -2840,7 +2939,12 @@ $('#study').addEventListener('click', async (e) => {
   if (act === 'reveal') return reveal();
   if (act === 'undo') return undoLast();
   if (!c) return;
-  if (act === 'ask') return askAboutCard(c);
+  if (act === 'ask') {
+    study.tutor = { msgs: [], busy: false, abort: null };
+    renderStudy();
+    return askCardTutor(cardTutorPrompt(c), 'Help me understand this card');
+  }
+  if (act === 'tclose') { stopCardTutor(); study.tutor = null; return renderStudy(); }
   if (act === 'slide') { const n = +a.dataset.n; closeStudy(); return state.path === c.path ? goTo(n) : openPdf(c.path, n); }
   if (act === 'edit') { study.editing = true; return renderStudy(); }
   if (act === 'cancel') { study.editing = false; return renderStudy(); }
