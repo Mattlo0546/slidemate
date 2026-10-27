@@ -294,6 +294,8 @@ def start_sync(login_first=False):
                 _sync["last"] = time.time()
                 if result == "ok":
                     classify_pending()
+                    import recordings
+                    recordings.start()  # missed lectures: notes from the university's own recordings
                 return
             if login_first and cfg["sync_login_command"].strip():
                 _sync["log"].append("Running sign-in…")

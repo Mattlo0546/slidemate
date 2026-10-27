@@ -356,6 +356,7 @@ async function openPdf(path, page) {
     goTo(page || store.get('page:' + path, 1), false);
     renderLibrary();
     renderChat();
+    loadSuggestions();
     if (window.innerWidth < 1000) document.body.classList.add('lib-hidden');
   } catch (e) {
     toast('Could not open PDF: ' + e.message, true);
@@ -889,7 +890,7 @@ function renderChat() {
       The tutor has read the whole deck, so answers link back to the rest of the lecture. Right-click a slide or press <kbd>E</kbd>.
       ${state.chatMode === 'slide' && others ? `<br><button class="small" id="viewAll">${icon('history')}See ${others} question${others > 1 ? 's' : ''} on other slides</button>` : ''}</div>`;
     $('#viewAll')?.addEventListener('click', () => setChatMode('all'));
-    return;
+    return renderQuiz();
   }
   let lastDay = '';
   for (const m of msgs) {
@@ -898,6 +899,7 @@ function renderChat() {
     box.append(msgEl(m));
   }
   box.scrollTop = box.scrollHeight;
+  renderQuiz();
 }
 function msgEl(m) {
   const d = document.createElement('div');
@@ -995,8 +997,9 @@ function renderTray() {
 }
 function updatePlaceholder() {
   const n = pendingPics.length;
-  $('#askInput').placeholder = pendingSnip ? `Ask about the snipped area of slide ${pendingSnip.page}`
+  $('#askInput').dataset.ph = pendingSnip ? `Ask about the snipped area of slide ${pendingSnip.page}`
     : n ? `Ask about your picture${n > 1 ? 's' : ''}` : 'Ask about this slide';
+  paintGhost();  // sets the placeholder, unless a suggestion is showing
 }
 $('#attachTray').addEventListener('click', (e) => {
   const b = e.target.closest('[data-rm]');
@@ -1019,6 +1022,7 @@ async function ask(question) {
     question = 'Read my notes in the attached picture' + (pendingPics.length > 1 ? 's' : '') + ' and help me understand them.';
   }
   if (state.busy) return toast('Still answering. Press ■ Stop (or Esc) to cancel it.');
+  closeQuiz();
   state.busy = true;
   state.abort = new AbortController();
   setStopMode(true);
@@ -1102,6 +1106,7 @@ async function askInner(question) {
     paint();
     const item = lib.items.find((x) => x.path === path);
     if (item && !item.hasChat) { item.hasChat = true; renderLibrary(); }
+    if (!state.stopping && bot.text.trim()) fetchFollowups(path, page);  // what to ask next (grey in the ask box)
   } catch (e) {
     if (e.name === 'AbortError' || state.stopping) {
       bot.text = bot.text.trim() ? bot.text.trimEnd() + '\n\n_(stopped)_' : '_Stopped before answering._';
@@ -1123,25 +1128,302 @@ $('#askForm').addEventListener('submit', (e) => {
   }
   const v = $('#askInput').value;
   $('#askInput').value = '';
+  sugg.live = null; sugg.dismissedDraft = ''; sugg.rev++; clearTimeout(sugg.timer); sugg.abort?.abort();
   autosize();
   ask(v);
 });
 // Grow the box with its text; only show a scrollbar once it hits the max height. (With ⌘+ text zoom,
-// WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar.)
+// WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar: below the
+// max, overflow stays hidden.) The box is border-box, so scrollHeight (text + padding) is exactly its height, and
+// the space under the last line matches the space above the first.
 const ASK_MAX = 180;
 const autosize = () => {
   const t = $('#askInput');
   t.style.height = 'auto';
   const h = t.scrollHeight;
-  t.style.height = Math.min(h + 2, ASK_MAX) + 'px';
+  t.style.height = Math.min(h, ASK_MAX) + 'px';
   t.style.overflowY = h > ASK_MAX ? 'auto' : 'hidden';
 };
-$('#askInput').addEventListener('input', autosize);
+$('#askInput').addEventListener('input', () => { autosize(); paintGhost(); scheduleLive(); });
 $('#askInput').addEventListener('keydown', (e) => {
+  if ((e.key === 'Tab' || e.key === 'ArrowRight') && !e.isComposing && acceptGhost(e)) return;
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#askForm').requestSubmit(); }
-  if (e.key === 'Escape') { pendingSnip = null; updatePlaceholder(); e.target.blur(); }
+  if (e.key === 'Escape') {
+    if (dismissGhost()) return;  // dismiss the suggestion first
+    pendingSnip = null; updatePlaceholder(); e.target.blur();
+  }
 });
-$('#chips').addEventListener('click', (e) => { if (e.target.dataset.q) ask(e.target.dataset.q); });
+$('#chips').addEventListener('click', (e) => {
+  if (e.target.dataset.q) ask(e.target.dataset.q);
+  else if (e.target.closest('[data-quiz]')) quizSlide();
+});
+
+// ---------- Quiz me: this slide's flashcards in the chat. Answer from memory, reveal, rate (same FSRS review as
+// a study session, so it counts). Not saved in the chat history. ----------
+const TUTOR_QUIZ = 'Quiz me with 3 short questions on this slide, then wait for my answers.';
+let quiz = null;  // {path, page, cards, i, revealed, typed, done, seen, firstTry, info, el}
+async function quizSlide(page = state.current) {
+  if (!state.pdf) return;
+  if (panelTab !== 'chat') setPanelTab('chat');
+  showChat();
+  const path = state.path;
+  let r;
+  try { r = await (await api(`/api/cards/slide?path=${encodeURIComponent(path)}&page=${page}`)).json(); }
+  catch { return toast('Couldn\'t load the flashcards', true); }
+  if (state.path !== path) return;
+  quiz?.el?.remove();
+  quiz = { path, page, cards: r.cards, info: r, i: 0, revealed: false, typed: '', done: 0, seen: new Set(), firstTry: 0, busy: false };
+  renderQuiz();
+}
+function closeQuiz() { quiz?.el?.remove(); quiz = null; }
+function renderQuiz() {
+  if (!quiz) return;
+  if (quiz.path !== state.path) { quiz = null; return; }
+  const box = $('#messages');
+  if (!quiz.el) { quiz.el = document.createElement('div'); quiz.el.className = 'quiz'; }
+  box.querySelector('.empty-chat')?.remove();
+  box.append(quiz.el);  // always last, under the conversation
+  const { cards, info } = quiz, c = cards[quiz.i];
+  const head = `<div class="quiz-head">${icon('cards')}<b>Quiz · slide ${quiz.page}</b>
+    <span>${c ? `${quiz.i + 1} of ${cards.length}` : ''}</span><span class="sp"></span>
+    <button class="ghost icon" data-qa="close" title="Close">${icon('x')}</button></div>`;
+  let body;
+  if (!cards.length) {
+    const why = info.job ? 'Flashcards for this deck are being made. They\'ll be here in a few minutes.'
+      : info.deck_cards ? `None of this deck's flashcards cover slide ${quiz.page}.`
+      : info.error ? 'Making flashcards for this deck didn\'t work last time.' : 'This deck has no flashcards yet.';
+    body = `<div class="note">${why}</div><div class="acts">
+      ${!info.job && !info.deck_cards ? `<button class="small primary" data-qa="make">${icon('cards')}Make flashcards</button>` : ''}
+      <button class="small" data-qa="tutor">${icon('sparkle')}Have the tutor quiz me instead</button></div>`;
+  } else if (!c) {
+    const pct = quiz.seen.size ? Math.round(100 * quiz.firstTry / quiz.seen.size) : 0;
+    body = `<div class="note">Done: ${quiz.seen.size} card${quiz.seen.size > 1 ? 's' : ''}, remembered ${pct}% on the first try.
+      They'll come back in your reviews when they're due.</div><div class="acts">
+      <button class="small" data-qa="again">${icon('history')}Quiz again</button>
+      <button class="small" data-qa="tutor">${icon('sparkle')}Have the tutor quiz me</button>
+      <button class="small ghost" data-qa="close">Close</button></div>`;
+  } else {
+    const meta = quiz.info.scope === 'subtopic' ? `<span>No cards for this exact slide · from “${esc(c.subtopic_title)}”</span>` : '';
+    const top = meta || badges(c) ? `<div class="meta">${meta}${badges(c)}</div>` : '';
+    if (!quiz.revealed) {
+      body = `${top}<div class="front">${cardFront(c)}</div>
+        <textarea id="quizTyped" rows="2" placeholder="Answer from memory first (optional). Enter shows the answer.">${esc(quiz.typed)}</textarea>
+        <div class="acts"><button class="small primary" data-qa="reveal">Show answer<kbd>↵</kbd></button>
+        <span class="sp"></span><button class="small ghost" data-qa="skip">Skip</button></div>`;
+    } else {
+      body = `${top}<div class="front small">${cardFront(c)}</div>
+        ${quiz.typed ? `<div class="yours"><span class="lbl">You said</span>${esc(quiz.typed)}</div>` : ''}
+        <div class="back">${cardBack(c)}</div>
+        ${c.why ? `<div class="why">${mdRender(c.why)}</div>` : ''}
+        <div class="study-rate">${RATE.map(([g, l]) => `<button data-rate="${g}" class="r${g}"><b>${l}</b><span>${c.previews?.[g] || ''}</span><kbd>${g}</kbd></button>`).join('')}</div>
+        <div class="acts"><button class="small ghost" data-qa="ask">${icon('sparkle')}Still unclear? Ask the tutor</button></div>`;
+    }
+  }
+  quiz.el.innerHTML = head + body;
+  box.scrollTop = box.scrollHeight;
+  const t = quiz.el.querySelector('#quizTyped');
+  if (t) {
+    t.addEventListener('input', () => { quiz.typed = t.value; });
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); quizReveal(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t.blur(); }
+    });
+    t.focus({ preventScroll: true });
+  }
+}
+function quizReveal() {
+  if (!quiz?.cards[quiz.i] || quiz.revealed) return;
+  quiz.typed = (quiz.el.querySelector('#quizTyped')?.value || '').trim();
+  quiz.revealed = true;
+  renderQuiz();
+}
+async function quizRate(g) {
+  const c = quiz?.cards[quiz.i];
+  if (!c || !quiz.revealed || quiz.busy) return;
+  quiz.busy = true;
+  let r;
+  try { r = await post('/api/cards/review', { path: c.path, id: c.id, rating: g }); }
+  catch { r = { error: 'Couldn\'t save that' }; }
+  finally { if (quiz) quiz.busy = false; }
+  if (!quiz) return;
+  if (r.error) return toast(r.error, true);
+  if (!quiz.seen.has(c.id)) { quiz.seen.add(c.id); if (g > 1) quiz.firstTry++; }
+  if (g === 1) quiz.cards.push({ ...c, ...r.card });  // forgot it: once more before the quiz ends
+  quiz.done++;
+  Object.assign(quiz, { i: quiz.i + 1, revealed: false, typed: '' });
+  if (state.path === c.path) loadDeckCards(c.path);  // keep the Cards tab's counts right
+  renderQuiz();
+}
+$('#messages').addEventListener('click', async (e) => {
+  const rb = e.target.closest('.quiz [data-rate]');
+  if (rb) return quizRate(+rb.dataset.rate);
+  const a = e.target.closest('.quiz [data-qa]');
+  if (!a || !quiz) return;
+  const act = a.dataset.qa, c = quiz.cards[quiz.i];
+  if (act === 'close') return closeQuiz();
+  if (act === 'reveal') return quizReveal();
+  if (act === 'skip') { Object.assign(quiz, { i: quiz.i + 1, revealed: false, typed: '' }); return renderQuiz(); }
+  if (act === 'again') return quizSlide(quiz.page);
+  if (act === 'tutor') { closeQuiz(); return ask(TUTOR_QUIZ); }
+  if (act === 'make') {
+    await post('/api/cards/make', { path: quiz.path, why: 'manual' });
+    toast('Making flashcards for this deck. They\'ll be ready in a few minutes.');
+    return quizSlide(quiz.page);
+  }
+  if (act === 'ask' && c) {
+    closeQuiz();
+    const answer = c.type === 'cloze' ? plainCard(c.front) + (c.back ? ' ' + c.back : '') : c.back;
+    return ask(`I'm quizzing myself on this slide's flashcards and this one didn't stick:\n\nQ: ${c.type === 'cloze' ? c.front.replace(CLOZE_RE, '[…]') : c.front}\nA: ${answer}\n\nHelp me actually understand it (a different angle from the card, tied to the slides), then check me with one quick question.`);
+  }
+});
+window.addEventListener('keydown', (e) => {  // 1–4 rate the quiz card (when you're not typing somewhere)
+  if (!quiz?.revealed || !/^[1-4]$/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || !$('#study').hidden) return;
+  e.preventDefault();
+  quizRate(+e.key);
+});
+
+// ---------- question suggestions: grey text in the ask box, Tab to use it (like Codex / Claude Code) ----------
+// Per slide: starter questions written once per deck by the lightest model. After an answer: follow-ups for that
+// slide replace them. While you type: a listed suggestion that starts with your text completes it at once; otherwise,
+// after a pause, the engine finishes your question (study skills picked for the subject; see suggest.py / skills.py).
+// Every keystroke is a new revision; only the newest request's answer is shown, except that an older finished
+// suggestion stays usable while what you type is exactly its beginning (Agentcomplete's prefix adoption).
+const sugg = { starters: new Map(), follow: new Map(), meta: new Map(), list: [], idx: 0, hidden: new Set(), poll: 0,
+               live: null, rev: 0, timer: 0, abort: null };
+const LIVE_DELAY = 600;   // ms of quiet before asking the engine to finish a question
+const LIVE_TTL = 90_000;  // an unused live suggestion expires
+const suggKey = (path = state.path, page = state.current) => `${path}#${page}`;
+const newId = () => (crypto.randomUUID?.() || Math.random().toString(16).slice(2) + Date.now().toString(16)).replace(/-/g, '').slice(0, 16);
+async function loadSuggestions(page = state.current) {
+  const path = state.path;
+  if (!path) return;
+  clearTimeout(sugg.poll);
+  const key = suggKey(path, page);
+  if (!sugg.starters.has(key)) {
+    try {
+      const r = await (await api(`/api/suggest?path=${encodeURIComponent(path)}&page=${page}`)).json();
+      if (r.state === 'ready') { sugg.starters.set(key, r.questions); sugg.meta.set('s:' + key, { id: r.id, skills: r.skills || [], source: 'starter' }); }
+      else if (r.state === 'making') sugg.poll = setTimeout(() => { if (suggKey() === key) loadSuggestions(page); }, 6000);
+    } catch {}
+  }
+  if (suggKey() === key) showSuggestions();
+}
+function showSuggestions() {
+  const key = suggKey();
+  sugg.list = sugg.hidden.has(key) ? [] : (sugg.follow.get(key) || sugg.starters.get(key) || []);
+  sugg.listMeta = sugg.meta.get((sugg.follow.has(key) ? 'f:' : 's:') + key);
+  sugg.idx = 0;
+  paintGhost();
+}
+async function fetchFollowups(path, page) {
+  try {
+    const r = await post('/api/suggest/followup', { path, page });
+    if (!r.questions?.length) return;
+    const key = suggKey(path, page);
+    sugg.follow.set(key, r.questions);
+    sugg.meta.set('f:' + key, { id: r.id, skills: r.skills || [], source: 'followup' });
+    sugg.hidden.delete(key);
+    if (suggKey() === key) showSuggestions();
+  } catch {}
+}
+// The suggestion that fits what's typed → {text: the whole question, meta} or null: the current listed one when the
+// box is empty; else a listed one that starts with what's typed; else the engine's completion, if what's typed is
+// still exactly the beginning of it.
+function ghostMatch() {
+  const t = $('#askInput'), v = t.value;
+  if (pendingSnip || pendingPics.length || cfg.chat_suggestions === false) return null;
+  if (!v) return sugg.list.length ? { text: sugg.list[sugg.idx], meta: sugg.listMeta } : null;
+  if (v.length < 2 || v.includes('\n') || t.selectionEnd !== v.length) return null;
+  const lv = v.toLowerCase();
+  const listed = sugg.list.find((s) => s.length > v.length && s.toLowerCase().startsWith(lv));
+  if (listed) return { text: listed, meta: sugg.listMeta };
+  const l = sugg.live;
+  if (l && l.key === suggKey() && Date.now() - l.at < LIVE_TTL && v.length >= l.draft.length) {
+    const full = l.draft + l.text;
+    if (full.length > v.length && full.toLowerCase().startsWith(lv)) return { text: v + full.slice(v.length), meta: l };
+  }
+  return null;
+}
+function paintGhost() {
+  const t = $('#askInput'), g = $('#askGhost'), m = ghostMatch(), v = t.value;
+  const why = $('#suggWhy');
+  if (!m || t.scrollHeight > ASK_MAX) {
+    g.innerHTML = ''; t.placeholder = t.dataset.ph || 'Ask about this slide';
+    why.hidden = true; $('#chatCtx').hidden = false;
+    return;
+  }
+  t.placeholder = '';
+  g.innerHTML = v
+    ? `<span class="typed">${esc(v)}</span>${esc(m.text.slice(v.length))}`
+    : `${esc(m.text)}<kbd>Tab</kbd>${sugg.list.length > 1 ? `<span class="n">${sugg.idx + 1}/${sugg.list.length}</span>` : ''}`;
+  const skills = m.meta?.skills || [];
+  why.hidden = !skills.length;
+  $('#chatCtx').hidden = !why.hidden;  // the hint takes the context line's place while a suggestion shows
+  why.textContent = skills.length ? `Suggested with: ${skills.slice(0, 2).join(' · ')}` : '';
+}
+function sendOutcome(meta, outcome) {
+  if (meta?.id) post('/api/suggest/outcome', { id: meta.id, outcome, source: meta.source || '' }).catch(() => {});
+}
+// Tab: use the suggestion (or the next one, if the box already holds one). → at the end also completes.
+function acceptGhost(e) {
+  const t = $('#askInput'), v = t.value, m = ghostMatch();
+  const atEnd = t.selectionStart === v.length && t.selectionEnd === v.length;
+  if (e.key === 'Tab' && !e.shiftKey && !m && sugg.list.length > 1 && sugg.list.includes(v)) {
+    sugg.idx = (sugg.list.indexOf(v) + 1) % sugg.list.length;
+    t.value = sugg.list[sugg.idx];
+  } else if (m && (e.key === 'Tab' && !e.shiftKey || e.key === 'ArrowRight' && v && atEnd)) {
+    t.value = m.text;
+    if (sugg.list.includes(m.text)) sugg.idx = sugg.list.indexOf(m.text);
+    sendOutcome(m.meta, 'accepted');
+  } else return false;
+  e.preventDefault();
+  sugg.rev++;
+  clearTimeout(sugg.timer);
+  sugg.abort?.abort();
+  autosize();
+  t.setSelectionRange(t.value.length, t.value.length);
+  paintGhost();
+  return true;
+}
+// Esc on a visible suggestion: hide it (empty box: this slide's list; typing: the engine's completion).
+function dismissGhost() {
+  const m = ghostMatch();
+  if (!m || !$('#askGhost').textContent) return false;
+  sendOutcome(m.meta, 'dismissed');
+  if ($('#askInput').value) { sugg.live = null; sugg.dismissedDraft = $('#askInput').value; }
+  else sugg.hidden.add(suggKey());
+  showSuggestions();
+  return true;
+}
+// After a pause in typing (cursor at the end, nothing listed fits), ask the engine to finish the question.
+function scheduleLive() {
+  const t = $('#askInput'), v = t.value, rev = ++sugg.rev;
+  clearTimeout(sugg.timer);
+  sugg.abort?.abort();
+  if (!state.path || state.busy || ghostMatch() || v === sugg.dismissedDraft || v.trim().split(/\s+/).length < 2
+      || t.selectionEnd !== v.length || v.includes('\n') || cfg.chat_suggestions === false) return;
+  sugg.timer = setTimeout(async () => {
+    const path = state.path, page = state.current, key = suggKey(), id = newId();
+    const ctl = sugg.abort = new AbortController();
+    try {
+      const res = await api('/api/suggest/complete', { method: 'POST', signal: ctl.signal, body: JSON.stringify({ path, page, draft: v, id }) });
+      const r = await res.json();
+      if (r.type !== 'autocomplete' || suggKey() !== key) return;
+      // Kept even if you've typed on: it's shown while your text is still exactly its beginning.
+      sugg.live = { key, draft: v, text: r.text, id: r.id, skills: r.skills || [], source: 'live', at: Date.now() };
+      if (rev === sugg.rev || $('#askInput').value.startsWith(v)) paintGhost();
+    } catch {}
+  }, LIVE_DELAY);
+}
+async function renderSkills() {
+  let r;
+  try { r = await (await api('/api/skills')).json(); } catch { return; }
+  $('#skillList').innerHTML = r.skills.map((k) => `<div class="skill-row" title="${esc(k.summary)}"><b>${esc(k.title)}</b>
+    <span class="tags">${esc(k.tags.slice(0, 5).join(', '))}${k.own ? ' · yours' : ''}</span>
+    <span class="n">${k.kept ? `used ${k.kept}×${k.used ? ` · ${k.used} accepted` : ''}` : ''}</span></div>`).join('');
+}
+$('#btnSkillsFolder').onclick = () => post('/api/skills/folder').then(() => toast('Add a .md file per skill (see README.txt there). They apply to new suggestions.', false, 6000));
 $('#btnReset').onclick = async () => {
   if (!state.path) return;
   if (chatFor(state.path).length && !confirm('Start a fresh chat for this deck?\n\nThe current conversation is archived (still saved on disk), and Claude starts over without it.')) return;
@@ -1332,6 +1614,23 @@ function showPane(name) {
   store.set('settingsPane', name);
 }
 document.querySelector('.set-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-pane]'); if (b) showPane(b.dataset.pane); });
+// Missed lectures, filled from the university's recordings (server/recordings.py)
+let fillRecPoll;
+async function renderFillRec() {
+  clearTimeout(fillRecPoll);
+  let st;
+  try { st = await (await api('/api/recordings')).json(); } catch { return; }
+  const when = st.last ? new Date(st.last * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const filled = (st.filled || []).map((f) => `${f.deck}${f.partial ? ' (gaps filled)' : ''}`).join(', ');
+  $('#fillRecStatus').textContent = !st.available
+    ? 'Connect your university (Your university tab) to use its recordings.'
+    : st.running ? (st.log.at(-1) || 'Checking your recordings…')
+    : (filled ? `Last check filled: ${filled}.` : when ? `Last checked ${when}: nothing missing.` : 'Runs after each Pull.');
+  $('#btnFillRec').disabled = !st.available || st.running;
+  if (st.running && $('#settings').open) fillRecPoll = setTimeout(renderFillRec, 4000);
+}
+$('#btnFillRec').onclick = async () => { await post('/api/recordings/run', {}); renderFillRec(); };
+
 async function openSettings(pane) {
   draft = JSON.parse(JSON.stringify(cfg));
   $('#savedHint').textContent = '';
@@ -1339,8 +1638,12 @@ async function openSettings(pane) {
   renderRoots();
   $('#setIpad').value = cfg.ipad_name || '';
   $('#setRecLimit').value = cfg.rec_limit_min ?? 120;
+  $('#setFillRec').checked = cfg.fill_from_recordings !== false;
+  renderFillRec();
   $('#setCardsAuto').checked = cfg.cards_auto !== false;
   $('#setCardsChats').checked = cfg.cards_from_chats !== false;
+  $('#setSuggest').checked = cfg.chat_suggestions !== false;
+  renderSkills();
   $('#setCardsNew').value = cfg.cards_new_per_day ?? 20;
   $('#setCardsRetention').value = String(cfg.cards_retention ?? 0.9);
   $('#setAirdrop').checked = cfg.airdrop;
@@ -1798,7 +2101,9 @@ function settingsPayload() {
     sync_mcp: mode === 'mcp' ? { server: $('#syncServer').value, tool: $('#syncTool').value, login_tool: $('#syncLoginTool').value } : { server: '', tool: '', login_tool: '' },
     write_markdown: $('#setMd').checked,
     rec_limit_min: Math.max(0, Math.min(1440, Math.round(+$('#setRecLimit').value || 0))),
+    fill_from_recordings: $('#setFillRec').checked,
     cards_auto: $('#setCardsAuto').checked, cards_from_chats: $('#setCardsChats').checked,
+    chat_suggestions: $('#setSuggest').checked,
     cards_new_per_day: Math.max(0, Math.min(500, Math.round(+$('#setCardsNew').value || 0))),
     cards_retention: +$('#setCardsRetention').value || 0.9,
   };
@@ -1889,6 +2194,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'j' || k === 'PageDown' || k === ' ') { e.preventDefault(); goTo(state.current + 1); }
   else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'k' || k === 'PageUp') { e.preventDefault(); goTo(state.current - 1); }
   else if (k === 'e') ask('Explain this slide.');
+  else if (k === 'q') quizSlide();
   else if (k === 's') sendSlide();
   else if (k === 'x') startSnip();
   else if (k === '/') { e.preventDefault(); showChat(); $('#askInput').focus(); }
@@ -2015,6 +2321,7 @@ function onSlideChange(n) {
   if (rec && !rec.paused) rec.events.push({ t: Math.round(audioTime() * 10) / 10, slide: n, deck: state.path });
   if (panelTab === 'notes' && lec.mode === 'slide') renderNotes();
   markCardsHere();
+  loadSuggestions(n);
 }
 
 function togglePause() {
@@ -2649,7 +2956,7 @@ async function loadLectures(path, selectId) {
   const keep = selectId || (lec.cur && lec.list.some((l) => l.id === lec.cur) ? lec.cur : null);
   lec.cur = keep || lec.list.find((l) => l.status === 'done')?.id || lec.list[0]?.id || null;
   const pick = $('#lecturePick');
-  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${{ imported: 'imported', replay: 'Re/Play' }[l.source] || 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
+  pick.innerHTML = lec.list.map((l) => `<option value="${l.id}">${esc(l.date)} · ${{ imported: 'imported', replay: 'uni recording' }[l.source] || 'recorded'}${l.status !== 'done' ? ' · ' + l.status : ''}</option>`).join('');
   pick.value = lec.cur || '';
   pick.hidden = lec.list.length < 2;
   await loadLecture();
@@ -2721,7 +3028,7 @@ function renderNotes() {
   }
   const quotes = (s.quotes || []).map((q) => `<div class="quote">
       ${q.start != null && d.has_audio && !q.lecture ? `<button class="play" data-t="${q.start}">${icon('play')}${fmtT(q.start)}</button>`
-        : q.start != null && m.replay_url && !q.lecture ? `<a class="muted small" href="${esc(m.replay_url)}?playFrom=${Math.round(q.start * 1000)}" title="Watch this moment on Re/Play">${fmtT(q.start)} ↗</a>`
+        : q.start != null && m.replay_url && !q.lecture ? `<a class="muted small" href="${esc(replayAt(m, q.start))}" title="Watch this moment in the recording">${fmtT(q.start)} ↗</a>`
         : (q.start != null ? `<span class="muted small">${fmtT(q.start)}</span>` : '')}
       <blockquote>${esc(q.text)}</blockquote></div>`).join('');
   pane.innerHTML = `<h2>Slide ${n}: what the lecturer said</h2>${mdRender(s.notes_md || '')}
@@ -2735,6 +3042,14 @@ $('#notesPane').addEventListener('click', (e) => {
   if (a === 'import') openImport();
   if (a === 'regen') regenNotes();
 });
+
+// A link to this moment of the university's recording (Bristol's own job only sends Mediasite links).
+function replayAt(m, t) {
+  const p = m.replay_platform || 'mediasite', u = m.replay_url, sep = u.includes('?') ? '&' : '?';
+  if (p === 'mediasite') return `${u}${sep}playFrom=${Math.round(t * 1000)}`;
+  if (p === 'panopto') return `${u}${sep}start=${Math.floor(t)}`;
+  return u;
+}
 
 // ---------- audio playback of quotes ----------
 const lecAudio = $('#lecAudio');

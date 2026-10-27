@@ -65,6 +65,8 @@ Ready for your **Goodnotes or Notability** workflow.
 ### When something doesn't click: ask
 Press **E** to explain the current slide, or ask your own question. The tutor gets deck context and knows which slide you mean. Answers link back to slides. Attach a photo of handwritten notes, follow up, and revisit the conversation beside the same slide later.
 
+Not sure what to ask? Grey **suggestions** in the ask box offer specific questions for each slide, follow-ups after every answer, and the rest of your question as you type. Study skills tune them to the subject. Press **Tab** to use one.
+
 Your existing AI account, right inside your study space.
 
 </td>
@@ -81,7 +83,7 @@ The explanations between the bullet points stay with the deck.
 <td width="50%" valign="top">
 
 ### Before the exam: revise what challenged you
-Flashcards draw on the **slides, lecture notes and questions you asked the tutor**. Cards are grouped by subtopic, with exam hints and source slides. **FSRS spaced repetition** schedules reviews across courses. Export Basic and Cloze cards to Anki when you want.
+Flashcards draw on the **slides, lecture notes and questions you asked the tutor**. Cards are grouped by subtopic, with exam hints and source slides. **FSRS spaced repetition** schedules reviews across courses. Export Basic and Cloze cards to Anki when you want. **Quiz me** (or **Q**) brings the current slide's cards into the chat, and counts towards the same schedule.
 
 Your revision follows what you actually needed help with.
 
@@ -196,6 +198,7 @@ SlideMate combines a **Swift/AppKit macOS shell**, a **local Python service**, a
 | **Transcript-grounded notes** | The model selects transcript line ranges; the app reconstructs quotes from the stored transcript and retains timestamps. | [lecture.py](server/lecture.py) |
 | **Bounded audio processing** | One transcription job at a time, 15-minute segments, live partial transcripts and recovery after interruption. | [lecture.py](server/lecture.py) |
 | **Separate university permissions** | Tutor tool access and the library's Pull action can be enabled independently. Background sync jobs are polled to completion. | [mcp.py](server/mcp.py), [university.py](server/university.py) |
+| **Study-skill question suggestions** | A router picks the subject's study skills; one light-model call reviews them and writes the questions, validated with one retry. Adapted from [Agentcomplete](https://github.com/Mattlo0546/Agentcomplete). | [suggest.py](server/suggest.py), [skills.py](server/skills.py) |
 | **Revision driven by study activity** | Finished lecture notes trigger cards; later tutor questions can add targeted cards. FSRS-5 maintains review state. | [flashcards.py](server/flashcards.py) |
 | **Native Mac integration** | A Swift shell owns the local process, file opening and updates; a separate helper handles AirDrop recipient selection. | [main.swift](macos/SlideMate/main.swift), [airdrop.swift](macos/AirDrop/airdrop.swift) |
 
@@ -225,7 +228,10 @@ Use **Send to iPad** for a slide or snip. SlideMate opens AirDrop and can select
 Connecting a supported university starts a material pull. Later, press **Pull** to fetch new files. The library classifies downloaded PDFs by course, type and week. Access depends on the institution's setup and your account; Google Classroom needs an OAuth client file. This is not a promise of continuous background sync for every university.
 
 ### Can it help me catch up on a missed lecture?
-Yes, when you have a transcript or timed captions: import them to generate a summary and slide-linked notes. For sessions you attend, record in SlideMate and transcription runs locally. **Automatic fetching and transcription of university-hosted lecture recordings is not part of the verified implementation documented here.**
+Yes, when you have a transcript or timed captions: import them to generate a summary and slide-linked notes. For sessions you attend, record in SlideMate and transcription runs locally. If your university records lectures (Panopto, Echo360, Mediasite / Re/Play, or Meet recordings in Google Classroom), each Pull also matches recordings to their decks and writes notes for any deck that has none, from captions or by transcribing on your Mac. Turn it off in Settings → Lecture recording.
+
+### I don't know what to ask about a slide. Can it help?
+Yes. The ask box suggests questions for each slide, follow-ups after each answer, and finishes your question as you type. Study skills tune them to the subject, so they go beyond "explain this". To test yourself, **Quiz me** uses that slide's flashcards.
 
 ### How are the flashcards personalised?
 Cards use the lecture slides, available notes, exam hints and your tutor questions. After a revision conversation goes quiet, SlideMate can add cards about what you asked. Review in the app with FSRS or export Anki-compatible text. Generated cards remain editable.

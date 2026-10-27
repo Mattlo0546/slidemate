@@ -23,9 +23,12 @@ import ai_setup
 import config
 import flashcards
 import lecture
+import recordings
 import library as lib
 import mcp
 import providers
+import skills
+import suggest
 import tools
 import university
 
@@ -215,6 +218,28 @@ def status(only=None):
             "helper": bool(config.helper_app()), "data_dir": str(config.DATA)}
 
 
+SKILLS_README = """Your own study skills for SlideMate's question suggestions.
+
+Each .md file here is one skill: a way of asking good questions in a subject. It's added to the built-in ones, or
+replaces the built-in skill with the same file name. Format:
+
+---
+title: Clinical cases
+tags: medicine, diagnosis, symptoms, patient, case
+summary: For clinical case slides: ask about the reasoning from symptoms to diagnosis and management.
+---
+Use when a slide presents a patient case.
+
+Question moves:
+- Reasoning: "Which finding in <case> points most strongly to <diagnosis>, and why?"
+- Differential: "What else could cause <symptom>, and how would I rule it out?"
+
+Good: "Why does the raised troponin make an MI more likely than angina here?"
+Weak: "What is this case about?"
+
+Tags and the title decide which slides a skill is considered for; the model then decides whether it fits.
+"""
+
 # ------------------------------------------------------------------ HTTP
 
 MIME = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
@@ -299,6 +324,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(university.find(arg("q")))
             if u.path == "/api/ai/setup":
                 return self._json(ai_setup.status())
+            if u.path == "/api/recordings":
+                return self._json(recordings.status())
             if u.path == "/api/status":
                 only = (urllib.parse.parse_qs(u.query).get("only") or [""])[0]
                 return self._json(status([n for n in only.split(",") if n]))
@@ -335,6 +362,16 @@ class Handler(BaseHTTPRequestHandler):
                                    "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0})
             if u.path == "/api/cards/queue":
                 return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic")))
+            if u.path == "/api/cards/slide":
+                return self._json(flashcards.slide_cards(arg("path"), int(arg("page") or 1)))
+            if u.path == "/api/suggest":
+                return self._json(suggest.for_slide(arg("path"), int(arg("page") or 1)))
+            if u.path == "/api/skills":
+                kept, used = suggest.usage()
+                out = skills.listing()
+                for s in out["skills"]:
+                    s.update(kept=kept.get(s["id"], 0), used=used.get(s["id"], 0))
+                return self._json(out)
             return self._json({"error": "unknown"}, 404)
         rel = "index.html" if u.path in ("/", "") else urllib.parse.unquote(u.path.lstrip("/"))
         f = (config.STATIC / rel).resolve()
@@ -486,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/sync":
             lib.start_sync(login_first=bool(body.get("login")))
             return self._json(lib.sync_state())
+        if p == "/api/recordings/run":
+            return self._json(recordings.start(force=bool(body.get("force"))))
         if p == "/api/sync/courses":
             try:
                 return self._json(lib.choose_courses(body.get("include") or [], body.get("exclude") or []))
@@ -529,6 +568,21 @@ class Handler(BaseHTTPRequestHandler):
                 if path and os.path.isfile(path):
                     flashcards.request(path, body.get("mode", "auto"), body.get("why", "manual"))
             return self._json({"ok": True, "job": flashcards.job(body.get("path"))})
+        if p == "/api/suggest/followup":
+            return self._json(suggest.followups(body.get("path", ""), int(body.get("page") or 1)))
+        if p == "/api/suggest/complete":
+            return self._json(suggest.complete(body.get("path", ""), int(body.get("page") or 1),
+                                               str(body.get("draft") or ""), str(body.get("id") or "")))
+        if p == "/api/suggest/outcome":
+            suggest.outcome(str(body.get("id") or ""), body.get("outcome", ""), str(body.get("source") or ""))
+            return self._json({"ok": True})
+        if p == "/api/skills/folder":
+            skills.USER.mkdir(parents=True, exist_ok=True)
+            readme = skills.USER / "README.txt"
+            if not readme.exists():
+                readme.write_text(SKILLS_README)
+            subprocess.run(["open", str(skills.USER)])
+            return self._json({"ok": True})
         if p == "/api/cards/review":
             return self._json(flashcards.review(body["path"], body["id"], int(body["rating"])))
         if p == "/api/cards/undo":

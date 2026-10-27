@@ -33,13 +33,13 @@ PYTHON = "3.13"
 PACKAGES = {
     "parakeet": {"spec": "parakeet-mlx==0.5.3", "with": ["imageio-ffmpeg==0.6.0"], "exe": "parakeet-mlx",
                  "label": "speech-to-text"},
-    "moodle": {"spec": "moodle-mcp @ https://github.com/Mattlo0546/moodle-mcp/archive/refs/tags/v0.3.0.zip",
+    "moodle": {"spec": "moodle-mcp @ https://github.com/Mattlo0546/moodle-mcp/archive/refs/tags/v0.4.0.zip",
                "exe": "moodle-mcp", "label": "the Moodle connection"},
-    "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.2.0.zip",
+    "blackboard": {"spec": "blackboard-mcp @ https://github.com/Mattlo0546/blackboard-mcp/archive/refs/tags/v0.3.0.zip",
                    "exe": "blackboard-mcp", "label": "the Blackboard connection"},
-    "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.2.0.zip",
+    "canvas": {"spec": "canvas-mcp @ https://github.com/Mattlo0546/canvas-mcp/archive/refs/tags/v0.3.0.zip",
                "exe": "canvas-mcp", "label": "the Canvas connection"},
-    "classroom": {"spec": "classroom-mcp @ https://github.com/Mattlo0546/classroom-mcp/archive/refs/tags/v0.2.0.zip",
+    "classroom": {"spec": "classroom-mcp @ https://github.com/Mattlo0546/classroom-mcp/archive/refs/tags/v0.3.0.zip",
                   "exe": "classroom-mcp", "label": "the Google Classroom connection"},
 }
 SPEECH_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"  # parakeet-mlx's default

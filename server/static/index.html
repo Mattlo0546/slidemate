@@ -155,17 +155,18 @@
         <button data-q="Explain this slide more simply, like I'm new to the topic.">Simpler</button>
         <button data-q="Give me a concrete worked example of what this slide is about.">Example</button>
         <button data-q="How does this slide connect to the earlier and later slides? What's the big picture?">Big picture</button>
-        <button data-q="Quiz me with 3 short questions on this slide, then wait for my answers.">Quiz me</button>
+        <button data-quiz title="This slide's flashcards: answer from memory, then rate yourself (Q)">Quiz me</button>
       </div>
       <form id="askForm">
         <div id="attachTray" hidden></div>
         <button class="attach" type="button" id="btnAttach" title="Attach pictures, e.g. photos of your handwritten notes (or drop / paste them here)"><svg><use href="#i-clip"/></svg></button>
         <input type="file" id="attachInput" accept="image/*,.heic,.heif" multiple hidden>
-        <textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea>
+        <div class="ask-wrap"><div id="askGhost" aria-hidden="true"></div><textarea id="askInput" rows="1" placeholder="Ask about this slide"></textarea></div>
         <button class="send" type="submit" title="Send (Enter)"><svg><use href="#i-up"/></svg></button>
       </form>
       <div id="composerBar">
         <div id="chatCtx"></div>
+        <div id="suggWhy" hidden></div>
         <button id="ctxRing" class="ghost" title="Context and plan usage">
           <svg viewBox="0 0 20 20" class="ringsvg"><circle cx="10" cy="10" r="7.5" class="bg"/><circle cx="10" cy="10" r="7.5" class="fg" id="ringFg"/></svg>
         </button>
@@ -263,6 +264,19 @@
             </div>
           </div>
           <div class="set-group" id="modelRow"></div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Suggest questions</b><span>Not sure what to ask? Grey suggestions appear in the ask box for each slide and after each answer, and finish your question while you type: press Tab to use one. Written by the lightest model (e.g. Haiku) from the slides, what the lecturer said, and the study skills below.</span></div>
+              <input type="checkbox" class="switch" id="setSuggest">
+            </label>
+          </div>
+          <div class="set-group">
+            <div class="set-row">
+              <div class="set-label"><b>Study skills</b><span>Ways of asking good questions in each subject. For every suggestion the AI reviews the skills that fit the slide and keeps only the useful ones. Add your own as Markdown files.</span></div>
+              <div class="set-actions"><button type="button" class="small" id="btnSkillsFolder">Add your own</button></div>
+            </div>
+            <div id="skillList"></div>
+          </div>
         </section>
 
         <section class="pane" data-pane="ipad">
@@ -303,6 +317,16 @@
               <div class="set-label"><b>Time limit</b><span>Stop and save the recording automatically after this many minutes, in case you forget to press Stop. You get a heads-up 5 minutes before. 0 = no limit.</span></div>
               <span class="num-unit"><input id="setRecLimit" type="number" min="0" max="1440" step="5" inputmode="numeric"><span>min</span></span>
             </label>
+          </div>
+          <div class="set-group">
+            <label class="set-row">
+              <div class="set-label"><b>Fill in lectures you missed</b><span>After each Pull, SlideMate looks at your university's own lecture recordings (Panopto, Echo360, Re/Play, Meet…). A deck with no notes, or only some, gets notes from the recording's captions; slides you already have notes for are kept.</span></div>
+              <input type="checkbox" class="switch" id="setFillRec">
+            </label>
+            <div class="set-row">
+              <div class="set-label"><span id="fillRecStatus"></span></div>
+              <div class="set-actions"><button type="button" class="small" id="btnFillRec">Check now</button></div>
+            </div>
           </div>
           <div class="set-group">
             <div class="set-row">

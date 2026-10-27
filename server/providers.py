@@ -183,13 +183,13 @@ class Claude:
     def session(self, pdf, model):
         return ClaudeSession(self, pdf, model, config.load()["claude_effort"])
 
-    def oneshot(self, prompt, model=None, timeout=300):
-        cmd = self._base(model or config.load()["claude_model"]) + ["--output-format", "json"]
+    def oneshot(self, prompt, model=None, timeout=300, effort=""):
+        cmd = self._base(model or config.load()["claude_model"]) + ["--output-format", "json"] + (["--effort", effort] if effort else [])
         out = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout, cwd=config.WORK, env=config.ENV)
         return json.loads(out.stdout).get("result", "")
 
-    def oneshot_json(self, prompt, model=None, timeout=300):
-        return _json_from(self.oneshot(prompt, model, timeout))
+    def oneshot_json(self, prompt, model=None, timeout=300, effort=""):
+        return _json_from(self.oneshot(prompt, model, timeout, effort))
 
     def with_pdf(self, pdf, prompt, model=None, timeout=1800):
         """One turn with the whole deck attached (native PDF input)."""
@@ -1440,6 +1440,8 @@ def model_for(kind="chat"):
     cfg = config.load()
     name = current().name
     if name == "claude":
+        if kind == "light":  # small, frequent jobs (question suggestions): the smallest model is plenty
+            return "haiku"
         return cfg["claude_notes_model"] if kind == "notes" else cfg["claude_model"]
     return cfg.get(f"{name}_model") or None  # blank = that CLI's own default
 
