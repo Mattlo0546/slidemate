@@ -359,9 +359,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({**deck, "job": flashcards.job(arg("path")), "counts": flashcards.counts(deck),
                                    "lectures_done": len(flashcards.lectures_for(arg("path"))),
                                    "questions": len(flashcards._own_questions(msgs)),
-                                   "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0})
+                                   "new_questions": len(flashcards._own_questions(msgs, deck.get("chat_ts", 0))) if deck["cards"] else 0,
+                                   "revised_slides": flashcards.revised_slides_label(deck)})
             if u.path == "/api/cards/queue":
-                return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic")))
+                return self._json(flashcards.study_queue(arg("scope") or "all", arg("subtopic"), arg("revised") == "1"))
             if u.path == "/api/cards/slide":
                 return self._json(flashcards.slide_cards(arg("path"), int(arg("page") or 1)))
             if u.path == "/api/suggest":
@@ -582,6 +583,9 @@ class Handler(BaseHTTPRequestHandler):
             if not readme.exists():
                 readme.write_text(SKILLS_README)
             subprocess.run(["open", str(skills.USER)])
+            return self._json({"ok": True})
+        if p == "/api/cards/revised":
+            flashcards.mark_revised(body["path"], int(body["page"]))
             return self._json({"ok": True})
         if p == "/api/cards/review":
             return self._json(flashcards.review(body["path"], body["id"], int(body["rating"])))

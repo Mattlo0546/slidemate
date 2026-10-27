@@ -83,7 +83,7 @@ The explanations between the bullet points stay with the deck.
 <td width="50%" valign="top">
 
 ### Before the exam: revise what challenged you
-Flashcards draw on the **slides, lecture notes and questions you asked the tutor**. Cards are grouped by subtopic, with exam hints and source slides. **FSRS spaced repetition** schedules reviews across courses. Export Basic and Cloze cards to Anki when you want. **Quiz me** (or **Q**) brings the current slide's cards into the chat, and counts towards the same schedule.
+Flashcards draw on the **slides, lecture notes and questions you asked the tutor**. Cards are grouped by subtopic, with exam hints and source slides. **FSRS spaced repetition** schedules reviews across courses, and new cards follow your revision: cards from the slides you just went through come first, even past the daily new-card limit. Export Basic and Cloze cards to Anki when you want. **Quiz me** (or **Q**) brings the current slide's cards into the chat, and counts towards the same schedule.
 
 Your revision follows what you actually needed help with.
 

@@ -636,7 +636,13 @@ mark.cloze-a { background: rgba(59,130,246,.16); color: inherit; border-radius: 
 .study-card .face.front.small { font-size: 15px; font-weight: 400; color: var(--text-2); padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 .study-card .face.back { font-size: 17px; }
 .study-card .hint { margin-top: 10px; font-size: 13px; color: var(--muted); }
-#typed { display: block; width: 100%; margin-top: 22px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--raise); color: var(--text); font: inherit; font-size: 14px; resize: vertical; outline: none; min-height: 52px; }
+#typed { display: block; width: 100%; margin-top: 22px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--raise); color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; resize: none; outline: none; min-height: 52px; overflow-y: hidden; }
+/* Answer boxes grow with their text (growBox) and wrap long lines; like the ask box, never scroll sideways (WebKit
+   draws a horizontal scrollbar under text zoom even when the text wraps). */
+#typed, .quiz textarea { overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+#typed::-webkit-scrollbar:horizontal, .quiz textarea::-webkit-scrollbar:horizontal { display: none; height: 0; }
+#typed::-webkit-scrollbar, .quiz textarea::-webkit-scrollbar { width: 6px; height: 0; }
+#typed::-webkit-scrollbar-thumb, .quiz textarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 #typed:focus { border-color: var(--ring); }
 .study-card .reveal { display: flex; justify-content: center; margin-top: 16px; }
 .study-card .reveal button { padding: 8px 22px; font-size: 14px; }
@@ -664,7 +670,7 @@ mark.cloze-a { background: rgba(59,130,246,.16); color: inherit; border-radius: 
 .quiz .why { margin-top: 8px; font-size: 13px; color: var(--text-2); border-left: 2px solid var(--border-strong); padding-left: 9px; }
 .quiz .yours { font-size: 12.5px; color: var(--text-2); background: var(--hover); border-radius: 8px; padding: 6px 9px; margin-bottom: 8px; white-space: pre-wrap; }
 .quiz .yours .lbl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
-.quiz textarea { width: 100%; box-sizing: border-box; margin-top: 8px; resize: none; border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; background: var(--panel); font: inherit; font-size: 13px; outline: none; }
+.quiz textarea { width: 100%; box-sizing: border-box; margin-top: 8px; resize: none; line-height: 1.45; overflow-y: hidden; border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; background: var(--panel); font: inherit; font-size: 13px; outline: none; }
 .quiz textarea:focus { border-color: var(--ring); }
 .quiz .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 .quiz .acts kbd { margin-left: 6px; font-size: 10px; padding: 0 4px; background: transparent; color: inherit; border-color: color-mix(in srgb, currentColor 35%, transparent); }

@@ -437,6 +437,7 @@ function setCurrent(n) {
     else if (state.chatMode === 'slide') renderChat();
   }
   if (changed) onSlideChange(n);
+  watchRevision(n);
 }
 
 async function renderPage(n) {
@@ -1136,14 +1137,15 @@ $('#askForm').addEventListener('submit', (e) => {
 // WebKit can report the content a few px taller than the box, which used to show a pointless scrollbar: below the
 // max, overflow stays hidden.) The box is border-box, so scrollHeight (text + padding) is exactly its height, and
 // the space under the last line matches the space above the first.
+// The flashcard answer boxes (study and Quiz me) grow the same way.
 const ASK_MAX = 180;
-const autosize = () => {
-  const t = $('#askInput');
+const growBox = (t, max) => {
   t.style.height = 'auto';
-  const h = t.scrollHeight;
-  t.style.height = Math.min(h, ASK_MAX) + 'px';
-  t.style.overflowY = h > ASK_MAX ? 'auto' : 'hidden';
+  const h = t.scrollHeight + t.offsetHeight - t.clientHeight;  // + the border, if the box has one
+  t.style.height = Math.min(h, max) + 'px';
+  t.style.overflowY = h > max ? 'auto' : 'hidden';
 };
+const autosize = () => growBox($('#askInput'), ASK_MAX);
 $('#askInput').addEventListener('input', () => { autosize(); paintGhost(); scheduleLive(); });
 $('#askInput').addEventListener('keydown', (e) => {
   if ((e.key === 'Tab' || e.key === 'ArrowRight') && !e.isComposing && acceptGhost(e)) return;
@@ -1223,7 +1225,8 @@ function renderQuiz() {
   box.scrollTop = box.scrollHeight;
   const t = quiz.el.querySelector('#quizTyped');
   if (t) {
-    t.addEventListener('input', () => { quiz.typed = t.value; });
+    growBox(t, 200);
+    t.addEventListener('input', () => { quiz.typed = t.value; growBox(t, 200); });
     t.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); quizReveal(); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t.blur(); }
@@ -2317,6 +2320,21 @@ async function pump() {
   } finally { r.pumping = false; }
 }
 
+// A slide you stay on for a while counts as revised: its new flashcards come first when you study (not while
+// recording, when the lecture sets the pace). Slides you ask the tutor about count too (the server reads the chat).
+const REVISE_DWELL = 8000;
+let reviseT, reviseKey;
+function watchRevision(n) {
+  const path = state.path;
+  if (reviseKey === path + '#' + n) return;  // also runs when a deck opens on the slide number you were already on
+  reviseKey = path + '#' + n;
+  clearTimeout(reviseT);
+  reviseT = setTimeout(async () => {
+    if (rec || document.hidden || state.path !== path || state.current !== n) return;
+    await post('/api/cards/revised', { path, page: n }).catch(() => {});
+    if (panelTab === 'cards' && state.path === path && cards.deck?.cards.length) loadDeckCards(path);
+  }, REVISE_DWELL);
+}
 function onSlideChange(n) {
   if (rec && !rec.paused) rec.events.push({ t: Math.round(audioTime() * 10) / 10, slide: n, deck: state.path });
   if (panelTab === 'notes' && lec.mode === 'slide') renderNotes();
@@ -2422,10 +2440,16 @@ async function loadCardsOverview() {
   const busy = [...cards.overview.decks, ...cards.overview.backlog].some((d) => d.job);
   cardsPollT = setTimeout(loadCardsOverview, busy ? 5000 : 60000);
 }
+// New cards you'd get today: all of those from slides you just revised (they still use up the allowance), then
+// the others up to what's left of it. Same rule as the server's study queue.
+function newCardsToday(fresh, revised, left) {
+  return revised + Math.min(fresh - revised, Math.max(0, left - revised));
+}
 function totals() {
   const ds = cards.overview?.decks || [], t = cards.overview?.today || {};
   const due = ds.reduce((a, d) => a + d.counts.due, 0), fresh = ds.reduce((a, d) => a + d.counts.new, 0);
-  return { due, fresh, newToday: Math.min(fresh, t.new_left ?? 0) };
+  const revised = ds.reduce((a, d) => a + (d.counts.revised_new || 0), 0);
+  return { due, fresh, newToday: newCardsToday(fresh, revised, t.new_left ?? 0) };
 }
 function renderReviewBtn() {
   const { due, newToday } = totals();
@@ -2520,13 +2544,14 @@ function renderCardsPane() {
     return;
   }
   const c = d.counts;
-  const newNow = Math.min(c.new, cards.overview?.today?.new_left ?? c.new);
+  const newNow = newCardsToday(c.new, c.revised_new || 0, cards.overview?.today?.new_left ?? c.new);
   let html = `<div class="deck-head">
       <div class="nums"><div><b>${c.due}</b><span>due</span></div><div><b>${c.new}</b><span>new</span></div><div><b>${c.mature}</b><span>of ${c.total - c.suspended} learned</span></div></div>
       ${masteryBar(d.cards.filter((x) => !x.suspended))}
       <div class="actions"><button class="primary" data-ca="study" ${c.due + newNow ? '' : 'disabled'}>${icon('cards')}${c.due + newNow ? `Study ${c.due + newNow} card${c.due + newNow > 1 ? 's' : ''}` : 'All caught up'}</button>
         <button class="ghost icon" data-ca="menu" title="More">${icon('dots')}</button></div>
     </div>`;
+  if (c.revised_new && d.revised_slides) html += `<div class="nudge">${icon('cards')}<span>You revised slide${/[–,]/.test(d.revised_slides) ? 's' : ''} ${esc(d.revised_slides)}. Learn ${c.revised_new > 1 ? `their ${c.revised_new} new cards` : 'its new card'} while it's fresh.</span><button class="small" data-ca="learnrev">Learn ${c.revised_new > 1 ? 'them' : 'it'}</button></div>`;
   if (job) html += `<div class="status-line"><span class="spinner"></span>${job.state === 'queued' ? 'Waiting to add cards…' : 'Adding cards…'}</div>`;
   else if (d.new_questions) html += `<div class="nudge">${icon('chat')}<span>You've asked ${d.new_questions} new question${d.new_questions > 1 ? 's' : ''} since these cards were made.</span><button class="small" data-ca="chats">Add cards</button></div>`;
   if (d.error && !job) html += `<div class="status-line warn">Last update failed: ${esc(d.error)}</div>`;
@@ -2586,6 +2611,7 @@ $('#cardsPane').addEventListener('click', async (e) => {
   const row = e.target.closest('[data-card]'), card = row && d.cards.find((c) => c.id === row.dataset.card);
   if (a === 'make') return makeCards(d.path);
   if (a === 'study') return startStudy('deck:' + d.path, '', d.title);
+  if (a === 'learnrev') return startStudy('deck:' + d.path, '', `${d.title} · slides ${d.revised_slides}`, true);
   if (a === 'studysub') return startStudy('deck:' + d.path, b.dataset.sid, d.subtopics.find((t) => t.id === b.dataset.sid)?.title);
   if (a === 'chats') return makeCards(d.path, 'auto', 'chats');
   if (a === 'menu') {
@@ -2674,9 +2700,9 @@ async function slideThumb(path, n, width = 640) {
 
 // ---------- studying: active recall, then rate how well you remembered ----------
 let study = null;
-async function startStudy(scope = 'all', subtopic = '', title = '') {
+async function startStudy(scope = 'all', subtopic = '', title = '', revised = false) {
   let r;
-  try { r = await (await api(`/api/cards/queue?scope=${encodeURIComponent(scope)}&subtopic=${encodeURIComponent(subtopic)}`)).json(); }
+  try { r = await (await api(`/api/cards/queue?scope=${encodeURIComponent(scope)}&subtopic=${encodeURIComponent(subtopic)}${revised ? '&revised=1' : ''}`)).json(); }
   catch { return toast('Couldn\'t load your cards', true); }
   study = { scope, subtopic, title: title || 'All courses', main: r.cards.filter((c) => !isLearning(c)), learning: r.cards.filter(isLearning),
             learnAhead: r.learn_ahead, moreNew: r.more_new, cur: null, revealed: false, done: 0, firstTry: 0, seen: new Set(), history: [], busy: false };
@@ -2752,6 +2778,8 @@ function renderStudy() {
     el.querySelectorAll('img[data-thumb]').forEach((img) => slideThumb(c.path, +img.dataset.thumb).then((u) => { img.src = u; }, () => img.closest('.thumb').remove()));
   } else if (!study.editing) {
     const t = $('#typed');
+    growBox(t, 320);
+    t.addEventListener('input', () => growBox(t, 320));
     t.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); reveal(); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t.blur(); }
@@ -2851,7 +2879,7 @@ function renderHub() {
       <span class="cnt">${c.due ? `<b>${c.due}</b> due · ` : ''}${c.new} new · ${c.mature}/${c.total - c.suspended} learned${d.new_questions ? ` · ${icon('chat')}${d.new_questions}` : ''}</span>
       <div class="mbar"><i class="l" style="width:${100 * c.mature / n}%"></i><i class="s" style="width:${100 * (n - c.new - c.mature) / n}%"></i></div>
       ${d.job ? `<span class="muted small"><span class="spinner"></span>${d.job.state === 'queued' ? 'waiting' : 'adding cards'}</span>` : ''}
-      <button class="small" data-ha="study" data-scope="deck:${esc(d.path)}" data-title="${esc(d.title || '')}" ${c.due + Math.min(c.new, t.new_left) ? '' : 'disabled'}>Study</button></div>`;
+      <button class="small" data-ha="study" data-scope="deck:${esc(d.path)}" data-title="${esc(d.title || '')}" ${c.due + newCardsToday(c.new, c.revised_new || 0, t.new_left) ? '' : 'disabled'}>Study</button></div>`;
   };
   const backlog = ov.backlog.map((b) => `<div class="hub-deck">
       <span class="name plain">${esc(b.title || '')}<span class="muted small"> · ${esc(courseLabel(b.course))}${b.date ? ' · ' + esc(b.date) : ''}</span></span>
@@ -2870,8 +2898,9 @@ function renderHub() {
       <span class="muted small">Mixed across your courses: switching between topics feels harder, but it sticks better than one topic at a time.</span></div>
     ${courses.map((co) => {
       const ds = byCourse[co], cd = ds.reduce((a, d) => a + d.counts.due, 0), cn = ds.reduce((a, d) => a + d.counts.new, 0);
+      const cr = ds.reduce((a, d) => a + (d.counts.revised_new || 0), 0);
       return `<section class="hub-course"><div class="hc-head"><b>${esc(courseLabel(co))}</b><span class="muted small">${cd ? `${cd} due · ` : ''}${cn} new</span>
-        <button class="small ghost" data-ha="study" data-scope="course:${esc(co)}" data-title="${esc(courseLabel(co))}" ${cd + Math.min(cn, t.new_left) ? '' : 'disabled'}>Study course</button></div>
+        <button class="small ghost" data-ha="study" data-scope="course:${esc(co)}" data-title="${esc(courseLabel(co))}" ${cd + newCardsToday(cn, cr, t.new_left) ? '' : 'disabled'}>Study course</button></div>
         ${ds.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true })).map(deckRow).join('')}</section>`;
     }).join('')}
     ${ov.backlog.length ? `<section class="hub-course"><div class="hc-head"><b>Lectures without flashcards yet</b><span class="muted small">they have lecture notes</span>
@@ -2880,6 +2909,7 @@ function renderHub() {
     <details class="how"><summary>How this works</summary>
       <ul><li><b>Active recall.</b> You see the question first and answer from memory (say it, or type it) before you look. Pulling it out of memory is what strengthens it; re-reading isn't.</li>
       <li><b>Spaced repetition.</b> How you rate each card (Again / Hard / Good / Easy) sets when it comes back. FSRS, the scheduler Anki uses, aims for the moment you're about to forget, so easy cards drift months away and hard ones come back tomorrow.</li>
+      <li><b>New cards follow your revision.</b> Cards from slides you revised in the last two days (stayed on for a few seconds, or asked the tutor about) come first, even past the daily new-card limit. The rest follow in lecture order.</li>
       <li><b>What gets a card.</b> Each lecture's cards come from the slides and what the lecturer said. ${icon('star')} marks points they flagged as examinable, and ${icon('chat')} marks cards made from the questions you asked the tutor, because those are the bits you found hard.</li>
       <li><b>Subject-aware.</b> Philosophy gets arguments, objections and distinctions. Maths gets formulas, derivation steps and short problems to do on paper. Code gets "what does this do / output" cards.</li></ul></details>
   </div>`;

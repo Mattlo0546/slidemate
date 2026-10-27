@@ -8,6 +8,9 @@ Where cards come from (one deck of cards per lecture PDF, split into subtopics):
 
 Decks are made automatically when a lecture's notes are written, and topped up after a revision session in the
 chat. Scheduling is FSRS-5 with its published default parameters (the algorithm Anki uses by default).
+
+New cards follow your revision: cards from slides you revised in the last two days (stayed on in the viewer, or
+asked the tutor about) come first, and the daily new-card allowance doesn't hold them back.
 """
 import hashlib
 import math
@@ -196,7 +199,8 @@ def all_decks():
 def counts(deck, now=None):
     now = now or time.time()
     end = day_start(now) + 86400
-    c = {"new": 0, "learning": 0, "due": 0, "total": 0, "suspended": 0, "mature": 0, "leeches": 0}
+    rev = revised_pages(deck["path"]) if deck.get("cards") else set()
+    c = {"new": 0, "learning": 0, "due": 0, "total": 0, "suspended": 0, "mature": 0, "leeches": 0, "revised_new": 0}
     for card in deck.get("cards", []):
         c["total"] += 1
         if card.get("suspended"):
@@ -205,6 +209,7 @@ def counts(deck, now=None):
         s = card["srs"]
         if s["state"] == "new":
             c["new"] += 1
+            c["revised_new"] += _revised(card, rev)
         elif s["state"] in ("learning", "relearning"):
             c["learning"] += 1
             if s["due"] < end:
@@ -216,6 +221,55 @@ def counts(deck, now=None):
         if card.get("leech"):
             c["leeches"] += 1
     return c
+
+
+# ------------------------------------------------------------------ what you revised: its new cards come first
+
+REVISED = config.DATA / "revised_slides.json"
+REVISED_HOURS = 48  # "just revised": the last two days, so last night's revision still counts in the morning
+
+
+def mark_revised(path, page):
+    """The viewer reports a slide you stayed on for a while (not while recording a lecture)."""
+    with _lock:
+        data = lib._load(REVISED, {})
+        now = time.time()
+        data.setdefault(path, {})[str(int(page))] = now
+        old = now - 30 * 86400
+        data = {p: kept for p, pages in data.items() if (kept := {k: t for k, t in pages.items() if t > old})}
+        lib._save(REVISED, data)
+
+
+def revised_pages(path, hours=REVISED_HOURS):
+    """Slides of this deck you revised lately: ones you stayed on in the viewer, and ones you asked the tutor about."""
+    since = time.time() - hours * 3600
+    pages = {int(k) for k, t in lib._load(REVISED, {}).get(path, {}).items() if t > since}
+    pages |= {int(m["slide"]) for m in lib.load_chat(path)["messages"]
+              if m.get("role") == "user" and (m.get("ts") or 0) > since and isinstance(m.get("slide"), int) and m["slide"] > 0}
+    return pages
+
+
+def _revised(card, rev):
+    return bool(rev) and any(n in rev for n in card.get("slides") or [])
+
+
+def _ranges(nums):
+    """[3, 4, 5, 9] → '3–5, 9'"""
+    out, nums = [], sorted(set(nums))
+    for n in nums:
+        if out and n == out[-1][1] + 1:
+            out[-1][1] = n
+        else:
+            out.append([n, n])
+    return ", ".join(f"{a}–{b}" if b > a else str(a) for a, b in out)
+
+
+def revised_slides_label(deck):
+    """The revised slides that still have new cards, e.g. "20–24, 31", for the Cards tab's "learn them" nudge."""
+    rev = revised_pages(deck["path"])
+    hit = [n for c in deck.get("cards", []) if not c.get("suspended") and c["srs"]["state"] == "new"
+           for n in c.get("slides") or [] if n in rev]
+    return _ranges(hit)
 
 
 # ------------------------------------------------------------------ what the cards are made from
@@ -660,40 +714,53 @@ def _in_scope(d, scope):
     return (kind == "deck" and d["path"] == val) or (kind == "course" and d.get("course") == val)
 
 
-def study_queue(scope="all", subtopic=""):
+def _round_robin(groups, cap):
+    """New cards in lecture order within each deck, taking turns across decks, up to `cap`."""
+    per_deck = [[x[2] for x in sorted(v, key=lambda x: x[:2])] for v in groups.values()]
+    out = []
+    while len(out) < cap and any(per_deck):
+        for lst in per_deck:
+            if lst and len(out) < cap:
+                out.append(lst.pop(0))
+    return out
+
+
+def study_queue(scope="all", subtopic="", revised=False):
     """Cards to review now: learning cards and due reviews (shuffled: interleaving beats blocking for retention),
-    then new cards (in lecture order) up to today's new-card allowance, spread through the reviews."""
+    then new cards, spread through the reviews. New cards from slides you just revised come first and all of them
+    are in (they still count towards today's allowance); the rest follow in lecture order up to what's left of it.
+    revised=True: only the new cards from slides you just revised ("Learn them" in the Cards tab)."""
     now = time.time()
     end = day_start(now) + 86400
     decks = all_decks()
     ov_today = today(decks)
     ret = retention()
-    reviews, learning, fresh = [], [], {}
+    reviews, learning, fresh, hot = [], [], {}, {}
     for d in decks:
         if not _in_scope(d, scope) or not Path(d["path"]).exists():
             continue
         order = {t["id"]: i for i, t in enumerate(d["subtopics"])}
         titles = {t["id"]: t["title"] for t in d["subtopics"]}
+        rev = revised_pages(d["path"])
         for c in d["cards"]:
             if c.get("suspended") or (subtopic and c["subtopic"] != subtopic):
                 continue
+            st = c["srs"]["state"]
+            if revised and (st != "new" or not _revised(c, rev)):
+                continue
             item = {**c, "path": d["path"], "deck_title": d.get("title"), "course": d.get("course"),
                     "subtopic_title": titles.get(c["subtopic"], ""), "previews": previews(c, now, ret)}
-            st = c["srs"]["state"]
             if st == "new":
-                fresh.setdefault(d["path"], []).append((order.get(c["subtopic"], 99), (c.get("slides") or [999])[0], item))
+                (hot if _revised(c, rev) else fresh).setdefault(d["path"], []).append(
+                    (order.get(c["subtopic"], 99), (c.get("slides") or [999])[0], item))
             elif st in ("learning", "relearning") and c["srs"]["due"] < end:
                 learning.append(item)
             elif st == "review" and c["srs"]["due"] < end:
                 reviews.append(item)
     random.shuffle(reviews)
     new_left = ov_today["new_left"] if not subtopic else max(ov_today["new_left"], 10)  # studying one subtopic: let it start
-    per_deck = [[x[2] for x in sorted(v, key=lambda x: x[:2])] for v in fresh.values()]
-    new = []
-    while len(new) < new_left and any(per_deck):  # round-robin across lectures
-        for lst in per_deck:
-            if lst and len(new) < new_left:
-                new.append(lst.pop(0))
+    new = _round_robin(hot, math.inf)
+    new += _round_robin(fresh, new_left - len(new))
     mixed, k = [], max(1, len(reviews) // max(1, len(new))) if new else 0
     for i, r in enumerate(reviews):
         mixed.append(r)
@@ -701,7 +768,7 @@ def study_queue(scope="all", subtopic=""):
             mixed.append(new.pop(0))
     mixed += new
     learning.sort(key=lambda c: c["srs"]["due"])
-    more_new = sum(len(v) for v in fresh.values()) - sum(1 for c in mixed if c["srs"]["state"] == "new")
+    more_new = sum(len(v) for v in fresh.values()) + sum(len(v) for v in hot.values()) - sum(1 for c in mixed if c["srs"]["state"] == "new")
     return {"cards": learning + mixed, "now": now, "learn_ahead": LEARN_AHEAD, "more_new": more_new}
 
 
