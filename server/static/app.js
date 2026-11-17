@@ -753,6 +753,125 @@ function mdRender(text, links = true) {
   return links ? linkSlides(html) : html;
 }
 
+// -------------------------------------------------------------------------------------
+// Visuals in answers: a ```svg block is drawn as a picture, a ```widget block (HTML + CSS + JS) runs as a small
+// interactive module. Both live in a sandboxed iframe (opaque origin, no network except script CDNs), so nothing
+// they do can reach the app, the API or your files. Messages are rendered as parts so a visual isn't reloaded
+// (losing its state, flickering) every time more text streams in after it.
+const VIZ_RE = /^```(svg|widget)[^\n]*\n([\s\S]*?)(?:^(```)[ \t]*$|(?![\s\S]))/gm;
+function splitViz(text) {
+  const parts = [];
+  let last = 0, m;
+  VIZ_RE.lastIndex = 0;
+  while ((m = VIZ_RE.exec(text))) {
+    if (m.index > last) parts.push({ md: text.slice(last, m.index) });
+    parts.push({ lang: m[1], src: m[2].trim(), done: !!m[3] });
+    last = m.index + m[0].length;
+    if (!m[0].length) VIZ_RE.lastIndex++;
+  }
+  if (last < text.length) parts.push({ md: text.slice(last) });
+  return parts;
+}
+
+const VIZ_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+function vizDoc(lang, src) {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n) => cs.getPropertyValue(n).trim();
+  const dark = cs.colorScheme.includes('dark');
+  const vars = `--text:${v('--text')};--text-2:${v('--text-2')};--muted:${v('--muted')};--border:${v('--border-strong')};` +
+    `--bg:${v('--bg')};--panel:${v('--raise')};--accent:${dark ? '#4da3ff' : '#1a73e8'};--accent-2:${dark ? '#ff8a65' : '#e8590c'};--good:${v('--dot')};`;
+  const body = lang === 'svg' ? `<div class="svgbox">${src}</div>` : src;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${VIZ_CSP}">
+<style>:root{${vars}color-scheme:${dark ? 'dark' : 'light'}}
+html,body{margin:0;background:transparent;color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+body{padding:10px}.svgbox svg{display:block;max-width:100%;height:auto;margin:0 auto}
+button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer}
+input,select{font:inherit;color:var(--text);accent-color:var(--accent)}input[type=range]{vertical-align:middle}</style></head>
+<body>${body}<script>(()=>{const post=()=>parent.postMessage({vizH:Math.ceil(document.documentElement.getBoundingClientRect().height)},'*');
+new ResizeObserver(post).observe(document.documentElement);addEventListener('load',post);post();})()</script></body></html>`;
+}
+
+const vizKey = (p) => p.lang + '\n' + p.src + (p.done ? '' : '\u0000');
+function vizEl(p) {
+  const d = document.createElement('div');
+  d.className = 'viz';
+  d._src = vizKey(p);
+  if (!p.done) {  // still streaming in
+    d.classList.add('pending');
+    d.textContent = p.lang === 'svg' ? 'Drawing a diagram…' : 'Building an interactive…';
+    return d;
+  }
+  const f = document.createElement('iframe');
+  f.setAttribute('sandbox', 'allow-scripts');
+  f.title = p.lang === 'svg' ? 'Diagram' : 'Interactive';
+  f.srcdoc = vizDoc(p.lang, p.src);
+  f.style.height = p.lang === 'svg' ? '220px' : '320px';
+  const bar = document.createElement('div');
+  bar.className = 'viz-bar';
+  bar.innerHTML = `<span>${p.lang === 'svg' ? 'Diagram' : 'Interactive'}</span>` +
+    '<button class="ghost" data-viz="code">Code</button><button class="ghost" data-viz="big">Enlarge</button>';
+  const code = document.createElement('pre');
+  code.hidden = true;
+  code.innerHTML = `<code>${esc(p.src)}</code>`;
+  d._viz = p;
+  d.append(f, bar, code);
+  return d;
+}
+
+// Render a chat answer into an element part by part, keeping visuals that haven't changed.
+function setRich(el, text, prefix = '', links = true) {
+  if (!/^```(svg|widget)/m.test(text)) { el.innerHTML = prefix + mdRender(text, links); return; }
+  el.querySelector(':scope > .tool-status')?.remove();
+  if ([...el.children].some((c) => c._src === undefined)) el.innerHTML = '';  // was plain HTML before: start over
+  const parts = splitViz(text), kids = [...el.children];
+  parts.forEach((p, i) => {
+    const key = p.md !== undefined ? 'md\n' + p.md : vizKey(p);
+    if (kids[i]?._src === key) return;
+    let next;
+    if (p.md !== undefined) {
+      next = document.createElement('div');
+      next.className = 'md-part';
+      next.innerHTML = mdRender(p.md, links);
+      next._src = key;
+    } else next = vizEl(p);
+    kids[i] ? kids[i].replaceWith(next) : el.append(next);
+  });
+  kids.slice(parts.length).forEach((c) => c.remove());
+  if (prefix) el.insertAdjacentHTML('afterbegin', prefix);
+}
+
+window.addEventListener('message', (e) => {
+  if (typeof e.data?.vizH !== 'number') return;
+  for (const f of document.querySelectorAll('.viz iframe, #vizBig iframe')) {
+    if (f.contentWindow !== e.source) continue;
+    f.style.height = Math.min(Math.max(e.data.vizH, 40), f.closest('#vizBig') ? 4000 : 900) + 'px';
+    break;
+  }
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-viz]');
+  if (!b) return;
+  const d = b.closest('.viz');
+  if (b.dataset.viz === 'code') {
+    const pre = d.querySelector('pre');
+    pre.hidden = !pre.hidden;
+    b.textContent = pre.hidden ? 'Code' : 'Hide code';
+    return;
+  }
+  const ov = document.createElement('div');
+  ov.id = 'vizBig';
+  ov.innerHTML = '<div class="box"><button class="ghost close" title="Close (Esc)">✕</button></div>';
+  const f = document.createElement('iframe');
+  f.setAttribute('sandbox', 'allow-scripts');
+  f.srcdoc = vizDoc(d._viz.lang, d._viz.src);
+  ov.firstChild.append(f);
+  const onKey = (k) => { if (k.key === 'Escape') close(); };
+  const close = () => { ov.remove(); removeEventListener('keydown', onKey); };
+  ov.addEventListener('click', (k) => { if (k.target === ov || k.target.closest('.close')) close(); });
+  addEventListener('keydown', onKey);
+  document.body.append(ov);
+});
+
 // "slide 26" / "slides 24–28" / "slides 7 and 9" in answers and notes → links (hover to preview, click to go).
 const SLIDE_RE = /\b(slides?)(\s+)(\d{1,3}(?:\s*(?:,|–|—|-|to|and|&|or)\s*\d{1,3})*)/gi;
 function linkSlides(html) {
@@ -922,7 +1041,7 @@ function msgEl(m) {
       }
       d.append(pics);
     }
-  } else d.innerHTML = mdRender(m.text || '');
+  } else setRich(d, m.text || '');
   return d;
 }
 $('#messages').addEventListener('click', (e) => {
@@ -1081,7 +1200,7 @@ async function askInner(question) {
       if (state.path !== path || !bot._el?.isConnected) return;
       if (!bot.text) { bot._el.dataset.status = `${bot.status || 'Thinking'} · ${Math.round((Date.now() - t0) / 1000)}s`; return; }
       bot._el.classList.remove('thinking');
-      bot._el.innerHTML = (bot.status ? `<div class="tool-status"><span class="spinner"></span>${esc(bot.status)}</div>` : '') + mdRender(bot.text);
+      setRich(bot._el, bot.text, bot.status ? `<div class="tool-status"><span class="spinner"></span>${esc(bot.status)}</div>` : '');
       if (box.scrollHeight - box.scrollTop - box.clientHeight < 140) box.scrollTop = box.scrollHeight;
     };
     for (;;) {
@@ -1115,7 +1234,7 @@ async function askInner(question) {
       bot.text += `\n\n**Error:** ${e.message}`;
     }
     bot.status = null;
-    if (bot._el) bot._el.innerHTML = mdRender(bot.text);
+    if (bot._el) setRich(bot._el, bot.text);
   } finally {
     clearInterval(tick);
     bot._el?.classList.remove('thinking');
@@ -2861,7 +2980,7 @@ function renderCardTutor(focus = false) {
 function paintTutorMsg(d, m) {
   d.classList.toggle('thinking', !m.text);
   if (!m.text) { if (m.status) d.dataset.status = m.status; return; }
-  d.innerHTML = (m.status ? `<div class="tool-status"><span class="spinner"></span>${esc(m.status)}</div>` : '') + mdRender(m.text, false);
+  setRich(d, m.text, m.status ? `<div class="tool-status"><span class="spinner"></span>${esc(m.status)}</div>` : '', false);
 }
 function paintTutorSend() {
   const b = $('#cardTutor .send');

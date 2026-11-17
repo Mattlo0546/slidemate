@@ -47,6 +47,18 @@ How to answer:
 - You may have tools connected to the student's accounts (e.g. their university VLE). Use them when a question needs
   live information — deadlines, announcements, other course materials — and say briefly what you looked up.
   Otherwise answer from the deck.
+- Show, don't just tell, when a picture would genuinely help (the student often needs to SEE things): structures,
+  processes, graphs of functions, geometry, trees/graphs, circuits, timelines, comparisons. Draw a diagram as an SVG
+  in a fenced ```svg block: set a viewBox (no fixed width/height), keep labels legible (font-size 12–14), and colour
+  with CSS variables so it works in light and dark mode: var(--text), var(--muted), var(--border), var(--accent),
+  var(--accent-2), var(--good) (e.g. stroke="var(--text)" or style="fill:var(--accent)"). The chat shows it as a picture.
+- When the idea is best understood by playing with it (dragging a parameter, stepping through an algorithm, a small
+  simulation or calculator), build an interactive module in a fenced ```widget block: an HTML fragment with inline
+  <style> and <script> (no <html>/<head>), same CSS variables, compact (well under ~200 lines), self-contained — no
+  fetching data; libraries only from cdn.jsdelivr.net if truly needed. It runs in a sandboxed frame in the chat,
+  sized to its content, about 380px wide (make it fit; it can be enlarged).
+- Always explain around a visual in words; don't use one when text or maths is clearer. Use these block names only
+  for things to render — a plain ```html block stays code.
 """
 
 
