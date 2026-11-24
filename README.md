@@ -26,6 +26,8 @@
   <a href="#questions-students-ask">FAQ</a>
 </p>
 
+> **Try it in a minute:** **[download the latest release](https://github.com/Mattlo0546/slidemate/releases/latest)** → drag SlideMate to Applications and open it ([first-launch help](docs/getting-started.md#first-launch)) → sign in with Claude, ChatGPT or another supported AI, open a lecture PDF and press <kbd>E</kbd> to have the slide explained.
+
 **SlideMate is a free, open-source macOS study app that brings an AI slide tutor, university slide downloads, one-click AirDrop to iPad, lecture transcription, and spaced-repetition flashcards into one workflow.** The tutor uses the lecture deck, the slide in front of you, and available lecture notes to explain what you are studying. Sign in with a supported AI account—there is **no additional SlideMate subscription or API key to buy**. Your provider's access rules and usage limits still apply; a local Ollama model is another option.
 
 The point is convenience: fewer downloads to organise, fewer windows to juggle, and less work turning a lecture into something you can revise.
@@ -121,7 +123,7 @@ The demos use an original sample lecture. Tutor answers were generated with Clau
 
 **Requirements:** macOS 13 or later, on Apple Silicon or Intel. Local audio transcription requires **Apple Silicon** and the Parakeet model download. iPad auto-select requires the AirDrop helper's Accessibility permission and your device name.
 
-> **Release status:** **v0.6.0** includes guided setup, university search, the expanded connector directory, and an offline **Start Here.html** guide beside the app in both DMG and ZIP downloads. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
+> **Release status:** **v0.7.0** adds diagrams and interactive demos in the chat, **Quiz me** on each slide, and suggested questions. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
 
 [Installation and first launch →](docs/getting-started.md) · [AI accounts and local models →](docs/getting-started.md#choose-your-ai) · [University setup →](docs/getting-started.md#connect-your-university)
 
