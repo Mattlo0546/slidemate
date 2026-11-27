@@ -1638,8 +1638,9 @@ function renderProviders() {
     const s = ps[id] || {};
     const waiting = setupPending[id] && !(s.installed && s.logged_in);
     const job = ob.aiJobs[id], busy = job && ['installing', 'signing_in'].includes(job.state);
-    const state = busy ? `<span class="pill-status"><span class="spinner"></span>${esc(job.step || 'Setting up…')}</span>${job.user_code ? `<div class="st">Code: <b>${esc(job.user_code)}</b></div>` : ''}
-        ${job.needs_code ? `<div class="acts"><input class="set-input" data-code-for="${id}" placeholder="Paste the code from your browser"><button type="button" class="small primary" data-code-go="${id}">Sign in</button></div>` : ''}`
+    const state = busy ? `<span class="pill-status">${job.needs_code ? '' : '<span class="spinner"></span>'}${esc(job.step || 'Setting up…')}</span>${job.user_code ? `<div class="st">Code: <b>${esc(job.user_code)}</b></div>` : ''}
+        ${job.needs_code ? `<div class="acts"><input class="set-input" data-code-for="${id}" placeholder="Paste the code from your browser"><button type="button" class="small primary" data-code-go="${id}">Sign in</button></div>` : ''}
+        ${job.state === 'signing_in' ? `<div class="acts">${job.url ? `<a href="${esc(job.url)}" target="_blank" class="small">Closed the tab? Open the sign-in page again</a>` : ''}<button type="button" class="small ghost" data-ai-restart="${id}">Start over</button></div>` : ''}`
       : job?.state === 'failed' && !(s.installed && s.logged_in) ? `<span class="pill-status bad">${esc(job.error)}</span><div class="acts"><button type="button" class="small primary" data-install="${id}">Try again</button></div>`
       : waiting ? `<span class="pill-status"><span class="spinner"></span>Finish in the Terminal window…</span>`
       : !s.installed ? `<span class="pill-status bad">Not installed</span><div class="acts"><button type="button" class="small primary" data-install="${id}">Install &amp; ${id === 'ollama' ? 'set up' : 'sign in'}</button></div>`
@@ -1649,6 +1650,8 @@ function renderProviders() {
       <div class="body"><b>${name}${tag ? `<span class="tag ${tag === 'Free' ? 'free' : ''}">${tag}</span>` : ''}</b><div class="st">${sub}</div></div>${state}</label>`;
   };
   $('#providerCards').classList.toggle('solo', free);
+  // keep a half-typed sign-in code (and its focus) through the refresh that runs every second during sign-in
+  const typing = [...document.querySelectorAll('#providerCards [data-code-for]')].map((i) => [i.dataset.codeFor, i.value, i === document.activeElement]);
   $('#providerCards').innerHTML = free
     ? card('codex', 'ChatGPT', 'Works with a free ChatGPT account. Install it, sign in once in your browser, and you’re set.', 'Free')
       + `<div class="plan-more">Paying for Claude, Gemini, Cursor or Grok? <button type="button" data-plan="paid">Use your paid plan instead</button></div>`
@@ -1661,6 +1664,10 @@ function renderProviders() {
   const pdfHint = draft.provider !== 'claude' && sysStatus && !sysStatus.pdftools
     ? `<div class="set-label" style="grid-column:1/-1"><span>${PROVIDER_NAMES[draft.provider]} reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>` : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
+  for (const [pid, val, focused] of typing) {
+    const i = $(`#providerCards [data-code-for="${pid}"]`);
+    if (i) { i.value = val; if (focused) i.focus(); }
+  }
   const sel = (id, opts, cur) => `<select id="${id}" class="set-input">${opts.map(([v, l]) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   // Claude's list comes from Claude Code's own model catalog (see claude_models in providers.py), so new models show up by themselves
   const claudeList = setCat?.claude?.models || catalog?.claude?.models;
@@ -1713,6 +1720,8 @@ $('#providerCards').addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('[data-code-for]')) return e.preventDefault();
+  const again = e.target.closest('[data-ai-restart]');
+  if (again) { e.preventDefault(); return restartAI(again.dataset.aiRestart); }
   const b = e.target.closest('[data-login], [data-install]');
   if (!b) return;
   e.preventDefault();
@@ -3553,7 +3562,7 @@ function renderAIFlow() {
       <button class="small ghost" data-ai-terminal="${id}">Do it in Terminal instead</button></div>`;
     return;
   }
-  const lines = [`<div class="line"><span class="spinner"></span><b>${esc(job.step || 'Starting…')}</b></div>`];
+  const lines = [`<div class="line">${job.needs_code ? '' : '<span class="spinner"></span>'}<b>${esc(job.step || 'Starting…')}</b></div>`];
   if (job.state === 'installing') lines.push(`<div class="hint">Downloading ${esc(name)}. This takes about a minute, once.</div>`);
   if (job.user_code) lines.push(`<div class="hint">Check this code matches the one in your browser, then approve:</div><div class="code">${esc(job.user_code)}</div>`);
   if (job.needs_code) {
@@ -3562,7 +3571,8 @@ function renderAIFlow() {
   } else if (job.state === 'signing_in') {
     lines.push(`<div class="hint">Finish signing in in your browser. SlideMate notices by itself when you're done.</div>`);
   }
-  if (job.url) lines.push(`<div class="row"><a href="${esc(job.url)}" target="_blank" class="small">Browser didn't open? Open the sign-in page</a></div>`);
+  if (job.state === 'signing_in') lines.push(`<div class="row">${job.url ? `<a href="${esc(job.url)}" target="_blank" class="small">Closed the tab or browser didn't open? Open the sign-in page</a>` : ''}
+      <button class="small ghost" data-ai-restart="${id}">Start over</button></div>`);
   const keep = document.activeElement?.id === 'obCode' ? $('#obCode').value : null;
   flow.innerHTML = lines.join('');
   if (keep !== null) { $('#obCode').value = keep; $('#obCode').focus(); }
@@ -3581,8 +3591,12 @@ async function pollAI() {
     }
   }
   if (ob.step === 'ai') renderAITiles();
-  else if ($('#settings').open) renderProviders();
+  if ($('#settings').open) renderProviders();
   if (running) ob.poll = setTimeout(pollAI, 1000);
+}
+async function restartAI(id) {  // stop a sign-in that's stuck (e.g. its browser tab was closed) and begin a fresh one
+  try { await post('/api/ai/cancel', { provider: id }); } catch { /* start anyway */ }
+  return startAI(id);
 }
 async function startAI(id) {
   ob.aiJobs[id] = { state: 'installing', step: 'Starting…' };
@@ -3600,6 +3614,8 @@ $('#onboard').addEventListener('click', async (e) => {
   }
   const retry = e.target.closest('[data-ai-retry]');
   if (retry) return startAI(retry.dataset.aiRetry);
+  const again = e.target.closest('[data-ai-restart]');
+  if (again) return restartAI(again.dataset.aiRestart);
   const term = e.target.closest('[data-ai-terminal]');
   if (term) {
     await post('/api/login', { provider: term.dataset.aiTerminal, install: !sysStatus?.providers?.[term.dataset.aiTerminal]?.installed });
