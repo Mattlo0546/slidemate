@@ -1662,7 +1662,12 @@ function renderProviders() {
     ? `<div class="set-label" style="grid-column:1/-1"><span>${PROVIDER_NAMES[draft.provider]} reads slides as text, which needs poppler: <code>brew install poppler</code></span></div>` : '';
   $('#providerCards').insertAdjacentHTML('beforeend', pdfHint);
   const sel = (id, opts, cur) => `<select id="${id}" class="set-input">${opts.map(([v, l]) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-  const claudeModels = [['sonnet', 'Sonnet 5.5 · fast'], ['opus', 'Opus 5.5 · deepest'], ['fable', 'Fable 5.1 · most powerful'], ['haiku', 'Haiku 4.5 · fastest']];
+  // Claude's list comes from Claude Code's own model catalog (see claude_models in providers.py), so new models show up by themselves
+  const claudeList = setCat?.claude?.models || catalog?.claude?.models;
+  const claudeModels = claudeList ? claudeList.map((m) => [m.id, m.desc ? `${m.label} · ${m.desc}` : m.label])
+    : [['sonnet', 'Sonnet · fast'], ['opus', 'Opus · deepest'], ['fable', 'Fable · most powerful'], ['haiku', 'Haiku · fastest']];
+  // an old saved alias ("sonnet") selects that family's current model
+  const claudePick = (cur) => claudeModels.some(([v]) => v === cur) ? cur : (claudeModels.find(([v]) => v.includes(`-${cur}-`))?.[0] || cur);
   const p = draft.provider;
   if (p === 'codex') {
     $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>Leave blank to use your Codex default. You can also switch from the chat box.</span></div>
@@ -1677,8 +1682,8 @@ function renderProviders() {
     $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Model</b><span>${hint}</span></div>${sel(MODEL_FIELDS[p], opts, cur)}</label>`;
     if (!list && !setCatLoading) loadSetCat();
   } else {
-    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, draft.claude_model)}</label>
-       <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, draft.claude_notes_model)}</label>`;
+    $('#modelRow').innerHTML = `<label class="set-row"><div class="set-label"><b>Tutor model</b><span>Used for chat. You can also switch it from the chat box.</span></div>${sel('setClaudeModel', claudeModels, claudePick(draft.claude_model))}</label>
+       <label class="set-row"><div class="set-label"><b>Lecture-notes model</b><span>Writes the summary and per-slide notes after a lecture.</span></div>${sel('setClaudeNotes', claudeModels, claudePick(draft.claude_notes_model))}</label>`;
   }
   if (!providerReady(draft.provider) || Object.keys(setupPending).length) watchStatus();
 }

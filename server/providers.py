@@ -70,14 +70,76 @@ def _tool_label(name):
 
 # ------------------------------------------------------------------ models, effort, usage
 
+# Fallback when Claude Code's model catalog can't be read: aliases, which the CLI maps to its newest model of each family.
 CLAUDE_MODELS = [
-    {"id": "opus", "label": "Opus 5.5", "desc": "Most capable for deep explanations"},
-    {"id": "sonnet", "label": "Sonnet 5.5", "desc": "Fast and smart, the everyday choice"},
-    {"id": "fable", "label": "Fable 5.1", "desc": "Most powerful, slower"},
-    {"id": "haiku", "label": "Haiku 4.5", "desc": "Fastest, lightest"},
+    {"id": "opus", "label": "Opus", "desc": "Most capable for deep explanations"},
+    {"id": "sonnet", "label": "Sonnet", "desc": "Fast and smart, the everyday choice"},
+    {"id": "fable", "label": "Fable", "desc": "Most powerful, slower"},
+    {"id": "haiku", "label": "Haiku", "desc": "Fastest, lightest"},
 ]
 CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 LIMITS = {}  # provider → latest plan-usage windows reported by the CLI
+
+
+def _claude_catalog():
+    """Claude Code's own model catalog, which it refreshes from Anthropic as new models ship (like Codex's
+    models_cache.json). It's an internal cache, so any surprise in its shape falls back to CLAUDE_MODELS."""
+    root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or config.HOME / ".claude") / "cache" / "model-catalog"
+    files = sorted((f for f in root.glob("*.json") if not f.name.endswith("-failed.json")),
+                   key=lambda f: (f.stem.endswith("-cc"), f.stat().st_mtime), reverse=True)  # the CLI's own copy first
+    for f in files:
+        try:
+            cat = json.loads(f.read_text())["catalog"]["config"]
+            if cat.get("models"):
+                return cat
+        except Exception:
+            continue
+    return None
+
+
+_CLAUDE_VERSION = []
+
+
+def _claude_cli_version():
+    if not _CLAUDE_VERSION:
+        try:
+            out = subprocess.run([config.which("claude") or "claude", "--version"], capture_output=True, text=True,
+                                 timeout=10, env=config.ENV).stdout
+            _CLAUDE_VERSION.append(tuple(int(x) for x in re.match(r"\s*(\d+)\.(\d+)\.(\d+)", out).groups()))
+        except Exception:
+            _CLAUDE_VERSION.append(None)
+    return _CLAUDE_VERSION[0]
+
+
+def claude_models():
+    cat = _claude_catalog()
+    if not cat:
+        return CLAUDE_MODELS
+    have = _claude_cli_version()
+    out = []
+    for m in cat["models"]:
+        if m.get("section") != "main" or not m.get("id"):
+            continue  # "overflow" holds older models
+        need = m.get("min_claude_code_version")
+        if have and need:
+            try:
+                if tuple(int(x) for x in need.split(".")[:3]) > have:
+                    continue  # this Claude Code is too old to run it
+            except ValueError:
+                pass
+        family = (m.get("runtime") or {}).get("family") or m.get("short_name", "").lower()
+        desc = m.get("description") or next((f["desc"] for f in CLAUDE_MODELS if f["id"] == family), "")
+        out.append({"id": m["id"], "label": m.get("name") or m["id"], "desc": desc,
+                    "efforts": (m.get("runtime") or {}).get("effort_levels") or CLAUDE_EFFORTS})
+    return out or CLAUDE_MODELS
+
+
+def resolve_claude_model(model):
+    """Saved aliases ("sonnet", "fable") → the catalog's current model for that family, so a new release is
+    picked up even before the CLI's own alias catches up."""
+    cat = _claude_catalog()
+    target = ((cat or {}).get("provider_alias_targets") or {}).get(model or "")
+    return (target or {}).get("default") or model
 
 
 def window_label(minutes=None, key=""):
@@ -111,7 +173,8 @@ def catalogue(everything=False):
     fetched when that provider is in use or Settings asks for every list."""
     cfg = config.load()
     return {"provider": cfg["provider"],
-            "claude": {"models": CLAUDE_MODELS, "efforts": CLAUDE_EFFORTS, "model": cfg["claude_model"], "effort": cfg["claude_effort"]},
+            "claude": {"models": claude_models(), "efforts": CLAUDE_EFFORTS, "model": resolve_claude_model(cfg["claude_model"]),
+                       "notes_model": resolve_claude_model(cfg["claude_notes_model"]), "effort": cfg["claude_effort"]},
             "codex": {"models": codex_models(), "model": cfg["codex_model"], "effort": cfg["codex_effort"]},
             "cursor": {"models": cursor_models(fetch=everything or cfg["provider"] == "cursor"), "efforts": [],
                        "model": cfg["cursor_model"], "effort": ""},
@@ -190,7 +253,7 @@ class Claude:
 
     def _base(self, model):
         return [self.bin(), "-p", "--tools", "", "--no-session-persistence", "--setting-sources", "",
-                "--strict-mcp-config", "--model", model]
+                "--strict-mcp-config", "--model", resolve_claude_model(model)]
 
     def session(self, pdf, model):
         return ClaudeSession(self, pdf, model, config.load()["claude_effort"])
