@@ -123,7 +123,7 @@ The demos use an original sample lecture. Tutor answers were generated with Clau
 
 **Requirements:** macOS 13 or later, on Apple Silicon or Intel. Local audio transcription requires **Apple Silicon** and the Parakeet model download. iPad auto-select requires the AirDrop helper's Accessibility permission and your device name.
 
-> **Release status:** **v0.7.0** adds diagrams and interactive demos in the chat, **Quiz me** on each slide, and suggested questions. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
+> **Release status:** **v0.7.1** keeps Claude's model list up to date by itself and fixes a stuck Claude sign-in. **v0.7.0** added diagrams and interactive demos in the chat, **Quiz me** on each slide, and suggested questions. [Release notes](https://github.com/Mattlo0546/slidemate/releases) show what is in each download. [Build from source](docs/getting-started.md#build-from-source) for the latest code.
 
 [Installation and first launch →](docs/getting-started.md) · [AI accounts and local models →](docs/getting-started.md#choose-your-ai) · [University setup →](docs/getting-started.md#connect-your-university)
 
